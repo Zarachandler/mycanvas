@@ -15,6 +15,7 @@ import {
 import ZoomableGrid from "../board/ZoomableGrid";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from '@supabase/supabase-js';
+import CollaboratorsPanel, { Collaborator } from "./CollaboratorsPanel"; // Import the component
 import {
   StickyNote,
   MousePointer2,
@@ -150,6 +151,15 @@ export default function Home() {
   const [diagramMode, setDiagramMode] = useState(false);
   const [freehandPaths, setFreehandPaths] = useState<FreehandPath[]>([]);
   const [comments, setComments] = useState<CommentType[]>([]);
+
+  // Mock collaborators data - replace with real data from your backend
+  const [collaborators] = useState<Collaborator[]>([
+    { id: "1", name: "John Doe", email: "john@example.com", color: "#FF6B6B" },
+    { id: "2", name: "Jane Smith", email: "jane@example.com", color: "#4ECDC4" },
+    { id: "3", name: "Bob Wilson", email: "bob@example.com", color: "#FFE66D" },
+  ]);
+
+  const owner = { id: "0", name: "You" };
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -287,125 +297,10 @@ export default function Home() {
     },
   ];
 
-  // ---------- SUPABASE FUNCTIONS (ONLY FOR STICKY NOTES) ----------
-  
-  // Load initial sticky notes data
-  const loadStickyNotes = async () => {
-    try {
-      const { data: stickyNotes, error } = await supabase
-        .from('sticky_notes')
-        .select('*')
-        .eq('board_id', boardId);
-
-      if (error) {
-        console.error('Error loading sticky notes:', error);
-      } else if (stickyNotes) {
-        setTextAreas(stickyNotes);
-      }
-    } catch (error) {
-      console.error('Error loading sticky notes:', error);
-    }
-  };
-
-  // Set up real-time subscription only for sticky notes
-  const setupStickyNotesSubscription = () => {
-    const stickyNotesSubscription = supabase
-      .channel('sticky-notes-changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'sticky_notes',
-          filter: `board_id=eq.${boardId}`
-        }, 
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setTextAreas(prev => [...prev, payload.new as StickyNoteType]);
-          } else if (payload.eventType === 'UPDATE') {
-            setTextAreas(prev => 
-              prev.map(note => note.id === payload.new.id ? payload.new as StickyNoteType : note)
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setTextAreas(prev => prev.filter(note => note.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      stickyNotesSubscription.unsubscribe();
-    };
-  };
-
-  // Save sticky note to Supabase
-  const saveStickyNote = async (stickyNote: Omit<StickyNoteType, 'created_at'>) => {
-    try {
-      const { data, error } = await supabase
-        .from('sticky_notes')
-        .insert([stickyNote])
-        .select();
-
-      if (error) {
-        console.error('Error saving sticky note:', error);
-        return null;
-      } else {
-        return data;
-      }
-    } catch (error) {
-      console.error('Unexpected error saving sticky note:', error);
-      return null;
-    }
-  };
-
-  // Update sticky note text in Supabase
-  const updateStickyNoteText = async (id: number, text: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('sticky_notes')
-        .update({ text })
-        .eq('id', id)
-        .select();
-
-      if (error) {
-        console.error('Error updating sticky note text:', error);
-        return null;
-      } else {
-        return data;
-      }
-    } catch (error) {
-      console.error('Unexpected error updating sticky note text:', error);
-      return null;
-    }
-  };
-
-  // Delete sticky note from Supabase
-  const deleteStickyNote = async (id: number) => {
-    try {
-      const { error } = await supabase
-        .from('sticky_notes')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        console.error('Error deleting sticky note:', error);
-        return false;
-      } else {
-        return true;
-      }
-    } catch (error) {
-      console.error('Unexpected error deleting sticky note:', error);
-      return false;
-    }
-  };
-
   // ---------- EFFECTS ----------
   useEffect(() => {
-    loadStickyNotes();
-    const unsubscribe = setupStickyNotesSubscription();
-    
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
+    // Load initial sticky notes data removed
+    // Real-time subscription setup removed
   }, [boardId]);
 
   // ---------- EVENT HANDLERS ----------
@@ -424,10 +319,8 @@ export default function Home() {
       });
     }
     else if (type === "note") {
-      // Delete from local state immediately
+      // Delete from local state only
       setTextAreas((prev) => prev.filter((t) => t.id !== id));
-      // Delete from Supabase
-      deleteStickyNote(id as number);
       toast({
         title: "Sticky Note Removed",
         description: "The sticky note has been deleted.",
@@ -467,7 +360,6 @@ export default function Home() {
       setTextAreas(prev => [...prev, newStickyNote]);
       setSelectedColor(null);
       
-      await saveStickyNote(newStickyNote);
       toast({
         title: "Sticky Note Added",
         description: "A new sticky note has been placed on the canvas.",
@@ -513,7 +405,6 @@ export default function Home() {
       };
       
       setTextAreas(prev => [...prev, newStickyNote]);
-      await saveStickyNote(newStickyNote);
       toast({
         title: "Sticky Note Dropped",
         description: "A sticky note has been placed on the canvas via drag and drop.",
@@ -658,11 +549,15 @@ export default function Home() {
             <Badge variant="secondary" className="text-xs">Live</Badge>
           </div>
         </div>
-        <div className="flex -space-x-2 ml-[560px]">
-          <Avatar className="w-8 h-8 border-2 border-purple">
-            <AvatarFallback>ZA</AvatarFallback>
-          </Avatar>
+        
+        {/* Collaborators Panel - Replaced the static avatar group */}
+        <div className="ml-[560px]">
+          <CollaboratorsPanel 
+            collaborators={collaborators} 
+            owner={owner}
+          />
         </div>
+        
         <div className="flex items-center space-x-9">
           <Button variant="outline" size="sm" onClick={handleInviteClick}>
             <Users className="w-4 h-4 mr-2" />Invite
@@ -804,14 +699,13 @@ export default function Home() {
                   cursor: activeTool === "erase" ? "not-allowed" : "text",
                 }}
                 value={ta.text}
-                onChange={async (e) => {
+                onChange={(e) => {
                   const newText = e.target.value;
                   setTextAreas((prev) =>
                     prev.map((t) =>
                       t.id === ta.id ? { ...t, text: newText } : t
                     )
                   );
-                  await updateStickyNoteText(ta.id, newText);
                 }}
                 onClick={(e) => {
                   if (activeTool === "erase") {
