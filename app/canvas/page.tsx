@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -15,7 +15,7 @@ import {
 import ZoomableGrid from "../board/ZoomableGrid";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from '@supabase/supabase-js';
-import CollaboratorsPanel, { Collaborator } from "./CollaboratorsPanel"; // Import the component
+import CollaboratorsPanel, { Collaborator } from "./CollaboratorsPanel";
 import {
   StickyNote,
   MousePointer2,
@@ -37,6 +37,8 @@ import {
   Minus,
   ArrowRight,
   ArrowLeft,
+  User,
+  X,
 } from "lucide-react";
 
 // Initialize Supabase client
@@ -134,6 +136,101 @@ function MessageIconWithTextarea({
   );
 }
 
+// ---------- USER CHECK MODAL ----------
+function UserCheckModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const [email, setEmail] = useState('');
+  const [result, setResult] = useState<{ id: string; email: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const res = await fetch('/api/check-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Unknown error');
+      } else {
+        setResult(data);
+      }
+    } catch (err) {
+      setError('Request failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setEmail('');
+    setResult(null);
+    setError(null);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">Check User</h2>
+          <button
+            onClick={handleClose}
+            className="p-1 hover:bg-gray-100 rounded"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit}>
+          <label htmlFor="email" className="block text-sm font-medium mb-2">
+            Enter email to check user:
+          </label>
+          <Input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="w-full mb-4"
+            placeholder="user@example.com"
+          />
+          
+          <Button 
+            type="submit" 
+            disabled={loading}
+            className="w-full"
+          >
+            {loading ? 'Checking...' : 'Check User'}
+          </Button>
+
+          {error && (
+            <p className="text-red-600 mt-4 p-2 bg-red-50 rounded">Error: {error}</p>
+          )}
+
+          {result && (
+            <div className="mt-4 p-3 bg-green-50 rounded">
+              <p className="font-semibold text-green-800">User found:</p>
+              <p className="text-sm">ID: {result.id}</p>
+              <p className="text-sm">Email: {result.email}</p>
+            </div>
+          )}
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ---------- MAIN PAGE COMPONENT ----------
 export default function Home() {
   const { toast } = useToast();
@@ -142,6 +239,7 @@ export default function Home() {
   const [activeTool, setActiveTool] = useState("select");
   const [showPalette, setShowPalette] = useState(false);
   const [showShapePalette, setShowShapePalette] = useState(false);
+  const [showUserCheck, setShowUserCheck] = useState(false);
 
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [textAreas, setTextAreas] = useState<StickyNoteType[]>([]);
@@ -505,6 +603,14 @@ export default function Home() {
     });
   };
 
+  const handleUserCheckClick = () => {
+    setShowUserCheck(true);
+    toast({
+      title: "User Check",
+      description: "Check if a user exists in the system.",
+    });
+  };
+
   const renderShapeSVG = (shape: ShapeType) => {
     const { type, width, height } = shape;
     switch (type) {
@@ -559,6 +665,9 @@ export default function Home() {
         </div>
         
         <div className="flex items-center space-x-9">
+          <Button variant="outline" size="sm" onClick={handleUserCheckClick}>
+            <User className="w-4 h-4 mr-2" />Check User
+          </Button>
           <Button variant="outline" size="sm" onClick={handleInviteClick}>
             <Users className="w-4 h-4 mr-2" />Invite
           </Button>
@@ -776,6 +885,12 @@ export default function Home() {
           </div>
         </ZoomableGrid>
       </div>
+
+      {/* User Check Modal */}
+      <UserCheckModal 
+        isOpen={showUserCheck} 
+        onClose={() => setShowUserCheck(false)} 
+      />
     </main>
   );
 }
