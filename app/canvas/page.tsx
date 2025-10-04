@@ -252,9 +252,9 @@ export default function Home() {
 
   // Mock collaborators data - replace with real data from your backend
   const [collaborators] = useState<Collaborator[]>([
-    { id: "1", name: "John Doe", email: "john@example.com", color: "#FF6B6B" },
-    { id: "2", name: "Jane Smith", email: "jane@example.com", color: "#4ECDC4" },
-    { id: "3", name: "Bob Wilson", email: "bob@example.com", color: "#FFE66D" },
+    // { id: "1", name: "John Doe", email: "john@example.com", color: "#FF6B6B" },
+    // { id: "2", name: "Jane Smith", email: "jane@example.com", color: "#4ECDC4" },
+    // { id: "3", name: "Bob Wilson", email: "bob@example.com", color: "#FFE66D" },
   ]);
 
   const owner = { id: "0", name: "You" };
@@ -883,7 +883,7 @@ export default function Home() {
               />
             ))}
           </div>
-        </ZoomableGrid>
+        </ZoomableGrid>,l
       </div>
 
       {/* User Check Modal */}
