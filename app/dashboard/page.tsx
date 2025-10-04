@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,10 +18,6 @@ import {
   Bell,
   ChevronRight,
   Rocket,
-  Filter,
-  Grid3X3,
-  List,
-  Sparkles,
   Zap,
   TrendingUp,
   Calendar,
@@ -168,10 +164,16 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [userInitials, setUserInitials] = useState('NA');
 
-  // Mock user data
-  const user = { name: 'Zara Ali' };
-  const userInitials = user.name.slice(0, 2).toUpperCase();
+  useEffect(() => {
+    // Get user email from localStorage (should be set by login page)
+    const userEmail = localStorage.getItem('userEmail');
+    if (userEmail) {
+      const initials = userEmail.split('@')[0].slice(0, 2).toUpperCase();
+      setUserInitials(initials);
+    }
+  }, []);
 
   const handleLogout = () => {
     router.push('/login');
@@ -207,7 +209,7 @@ export default function DashboardPage() {
               Invite members
             </Button>
             <Button size="sm" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg">
-              <Sparkles className="w-4 h-4 mr-2" />
+              <Zap className="w-4 h-4 mr-2" />
               Upgrade
             </Button>
             <Button variant="ghost" size="sm" className="p-2 hover:bg-gray-100">
