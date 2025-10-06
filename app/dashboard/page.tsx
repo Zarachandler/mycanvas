@@ -31,7 +31,7 @@ import {
   ArrowRight,
   Workflow,
   Brain,
-  LayoutGrid,
+  LayoutGrid, 
   RefreshCw,
   Lightbulb,
   Shapes
@@ -57,6 +57,70 @@ type TemplateType = {
   bgColor: string;
   borderColor: string;
   hoverColor: string;
+};
+
+// BoardFilterBar Props Interface
+interface BoardFilterBarProps {
+  filterBy: string;
+  setFilterBy: (value: string) => void;
+  ownedBy: string;
+  setOwnedBy: (value: string) => void;
+  sortBy: string;
+  setSortBy: (value: string) => void;
+}
+
+// BoardFilterBar Component Implementation
+const BoardFilterBar: React.FC<BoardFilterBarProps> = ({ 
+  filterBy, 
+  setFilterBy, 
+  ownedBy, 
+  setOwnedBy, 
+  sortBy, 
+  setSortBy 
+}) => {
+  return (
+    <div className="flex items-center space-x-4 p-4 bg-white rounded-lg border border-gray-200">
+      <div className="flex items-center space-x-2">
+        <label className="text-sm font-medium text-gray-700">Filter by:</label>
+        <select 
+          value={filterBy} 
+          onChange={(e) => setFilterBy(e.target.value)}
+          className="border border-gray-300 rounded-md px-3 py-1 text-sm"
+        >
+          <option value="all">All</option>
+          <option value="starred">Starred</option>
+          <option value="archived">Archived</option>
+        </select>
+      </div>
+      
+      <div className="flex items-center space-x-2">
+        <label className="text-sm font-medium text-gray-700">Owned by:</label>
+        <select 
+          value={ownedBy} 
+          onChange={(e) => setOwnedBy(e.target.value)}
+          className="border border-gray-300 rounded-md px-3 py-1 text-sm"
+        >
+          <option value="anyone">Anyone</option>
+          <option value="me">Me</option>
+          <option value="others">Others</option>
+        </select>
+      </div>
+      
+      <div className="flex items-center space-x-2">
+        <label className="text-sm font-medium text-gray-700">Sort by:</label>
+        <select 
+          value={sortBy} 
+          onChange={(e) => setSortBy(e.target.value)}
+          className="border border-gray-300 rounded-md px-3 py-1 text-sm"
+        >
+          <option value="last-opened">Last opened</option>
+          <option value="last-modified">Last modified</option>
+          <option value="created">Created</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
+    </div>
+  );
 };
 
 // ---------- TEMPLATE FUNCTIONALITIES ----------
@@ -405,69 +469,6 @@ const handleTemplateSpecificAction = (templateId: string, action: string, data: 
       return null;
   }
 };
-
-// ---------- FILTER BAR PROPS TYPE ----------
-interface BoardFilterBarProps {
-  filterBy: string;
-  setFilterBy: (value: string) => void;
-  ownedBy: string;
-  setOwnedBy: (value: string) => void;
-  sortBy: string;
-  setSortBy: (value: string) => void;
-}
-
-// ---------- FILTER BAR COMPONENT ----------
-export function BoardFilterBar({
-  filterBy,
-  setFilterBy,
-  ownedBy,
-  setOwnedBy,
-  sortBy,
-  setSortBy,
-}: BoardFilterBarProps) {
-  return (
-    <div className="flex items-center gap-4">
-      {/* Filter by dropdown */}
-      <label className="text-[#767d92]">
-        Filter by
-        <select
-          value={filterBy}
-          onChange={e => setFilterBy(e.target.value)}
-          className="ml-2 px-4 py-2 text-sm border border-[#e3e6f0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="all">All boards</option>
-          <option value="starred">Starred</option>
-          <option value="archived">Archived</option>
-        </select>
-      </label>
-      
-      {/* Owned by dropdown */}
-      <select
-        value={ownedBy}
-        onChange={e => setOwnedBy(e.target.value)}
-        className="px-4 py-2 text-sm border border-[#e3e6f0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-      >
-        <option value="anyone">Owned by anyone</option>
-        <option value="me">Owned by me</option>
-        <option value="others">Owned by others</option>
-      </select>
-      
-      <span className="text-[#767d92]">Sort by</span>
-      
-      {/* Sort by dropdown */}
-      <select
-        value={sortBy}
-        onChange={e => setSortBy(e.target.value)}
-        className="px-4 py-2 text-sm border-2 border-[#2962f6] rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-      >
-        <option value="last-opened">Last opened</option>
-        <option value="last-modified">Last modified</option>
-        <option value="created">Created</option>
-        <option value="name">Name</option>
-      </select>
-    </div>
-  );
-}
 
 const templates: TemplateType[] = [
   {
