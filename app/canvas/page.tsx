@@ -78,6 +78,31 @@ type StickyNoteType = {
   created_at?: string;
 };
 
+type BoardMetadata = {
+  id: string;
+  name: string;
+  owner: string;
+  lastOpened: string;
+};
+
+// ---------- UTILITY FUNCTIONS ----------
+function saveBoardMetadata(board: BoardMetadata) {
+  let recentBoards: BoardMetadata[] = JSON.parse(localStorage.getItem('recentBoards') || '[]');
+  recentBoards = recentBoards.filter((b: BoardMetadata) => b.id !== board.id);
+  recentBoards.unshift({
+    id: board.id,
+    name: board.name,
+    owner: board.owner,
+    lastOpened: new Date().toISOString()
+  });
+  recentBoards = recentBoards.slice(0, 10);
+  localStorage.setItem('recentBoards', JSON.stringify(recentBoards));
+}
+
+function getRecentBoards(): BoardMetadata[] {
+  return JSON.parse(localStorage.getItem('recentBoards') || '[]');
+}
+
 // ---------- COMMENT ICON COMPONENT ----------
 function MessageIconWithTextarea({
   comment,
@@ -234,8 +259,9 @@ function UserCheckModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 // ---------- MAIN PAGE COMPONENT ----------
 export default function Home() {
   const { toast } = useToast();
-  const [boardId, setBoardId] = useState<string>("default-board");
-  const [boardName, setBoardName] = useState("Untitled Board");
+  const [boardId, setBoardId] = useState(""); // user-set name/id
+  const [boardName, setBoardName] = useState("");
+  const [boardOwner, setBoardOwner] = useState("You");
   const [activeTool, setActiveTool] = useState("select");
   const [showPalette, setShowPalette] = useState(false);
   const [showShapePalette, setShowShapePalette] = useState(false);
@@ -250,13 +276,8 @@ export default function Home() {
   const [freehandPaths, setFreehandPaths] = useState<FreehandPath[]>([]);
   const [comments, setComments] = useState<CommentType[]>([]);
 
-  // Mock collaborators data - replace with real data from your backend
-  const [collaborators] = useState<Collaborator[]>([
-    // { id: "1", name: "John Doe", email: "john@example.com", color: "#FF6B6B" },
-    // { id: "2", name: "Jane Smith", email: "jane@example.com", color: "#4ECDC4" },
-    // { id: "3", name: "Bob Wilson", email: "bob@example.com", color: "#FFE66D" },
-  ]);
-
+  // Mock collaborators data
+  const [collaborators] = useState<Collaborator[]>([]);
   const owner = { id: "0", name: "You" };
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -395,11 +416,103 @@ export default function Home() {
     },
   ];
 
-  // ---------- EFFECTS ----------
+  // ---------- BOARD ID/NAME MANAGEMENT ----------
+  // On create or open, use the name for the id:
   useEffect(() => {
-    // Load initial sticky notes data removed
-    // Real-time subscription setup removed
-  }, [boardId]);
+    const urlParams = new URLSearchParams(window.location.search);
+    let boardParam = urlParams.get('board');
+    if (boardParam) {
+      setBoardId(boardParam);
+      setBoardName(boardParam);
+      setBoardOwner("You");
+      
+      // Save to metadata
+      saveBoardMetadata({
+        id: boardParam,
+        name: boardParam,
+        owner: "You",
+        lastOpened: new Date().toISOString()
+      });
+      
+      toast({
+        title: "Board Loaded",
+        description: `Opened board: ${boardParam}`,
+      });
+    } else {
+      // If no board parameter, use default values
+      const defaultBoardId = "default-board";
+      const defaultBoardName = "Untitled Board";
+      setBoardId(defaultBoardId);
+      setBoardName(defaultBoardName);
+      
+      saveBoardMetadata({
+        id: defaultBoardId,
+        name: defaultBoardName,
+        owner: "You",
+        lastOpened: new Date().toISOString()
+      });
+    }
+  }, [toast]);
+
+  // Autosave name: when changed, update recentBoards and localStorage
+  useEffect(() => {
+    if (!boardId) return;
+    
+    // Update metadata
+    let boards = JSON.parse(localStorage.getItem("recentBoards") || "[]");
+    const idx = boards.findIndex((b: BoardMetadata) => b.id === boardId);
+    if (idx !== -1) {
+      boards[idx].name = boardName;
+      boards[idx].lastOpened = new Date().toISOString();
+      localStorage.setItem('recentBoards', JSON.stringify(boards));
+    }
+  }, [boardName, boardId]);
+
+  // ---------- LOAD BOARD DATA FROM LOCALSTORAGE ----------
+  useEffect(() => {
+    if (!boardId) return;
+    
+    const saved = localStorage.getItem(`board-${boardId}-data`);
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        setShapes(data.shapes || []);
+        setTextAreas(data.textAreas || []);
+        setFreehandPaths(data.freehandPaths || []);
+        setComments(data.comments || []);
+        toast({
+          title: "Board Data Loaded",
+          description: "Your board content has been restored.",
+        });
+      } catch (error) {
+        console.error("Error loading board data:", error);
+        toast({
+          title: "Error Loading Board",
+          description: "Could not load saved board data.",
+          variant: "destructive",
+        });
+      }
+    } else {
+      // Initialize with empty arrays if no saved data
+      setShapes([]);
+      setTextAreas([]);
+      setFreehandPaths([]);
+      setComments([]);
+    }
+  }, [boardId, toast]);
+
+  // ---------- SAVE BOARD DATA TO LOCALSTORAGE ----------
+  useEffect(() => {
+    if (!boardId) return;
+    
+    const serialized = JSON.stringify({
+      shapes,
+      textAreas,
+      freehandPaths,
+      comments,
+    });
+    localStorage.setItem(`board-${boardId}-data`, serialized);
+  }, [shapes, textAreas, freehandPaths, comments, boardId]);
 
   // ---------- EVENT HANDLERS ----------
   const resetModes = () => {
@@ -417,7 +530,6 @@ export default function Home() {
       });
     }
     else if (type === "note") {
-      // Delete from local state only
       setTextAreas((prev) => prev.filter((t) => t.id !== id));
       toast({
         title: "Sticky Note Removed",
@@ -576,6 +688,15 @@ export default function Home() {
 
   const handleBoardNameChange = (newName: string) => {
     setBoardName(newName);
+    setBoardId(newName); // use name as id for links and storage
+    
+    saveBoardMetadata({
+      id: newName,
+      name: newName,
+      owner: boardOwner,
+      lastOpened: new Date().toISOString()
+    });
+    
     toast({
       title: "Board Name Updated",
       description: `Board name changed to "${newName}".`,
@@ -608,6 +729,20 @@ export default function Home() {
     toast({
       title: "User Check",
       description: "Check if a user exists in the system.",
+    });
+  };
+
+  const handleSaveBoard = () => {
+    saveBoardMetadata({
+      id: boardId,
+      name: boardName,
+      owner: boardOwner,
+      lastOpened: new Date().toISOString()
+    });
+    
+    toast({
+      title: "Board Saved",
+      description: "Board metadata has been saved to recent boards.",
     });
   };
 
@@ -656,7 +791,7 @@ export default function Home() {
           </div>
         </div>
         
-        {/* Collaborators Panel - Replaced the static avatar group */}
+        {/* Collaborators Panel */}
         <div className="ml-[560px]">
           <CollaboratorsPanel 
             collaborators={collaborators} 
@@ -667,6 +802,9 @@ export default function Home() {
         <div className="flex items-center space-x-9">
           <Button variant="outline" size="sm" onClick={handleUserCheckClick}>
             <User className="w-4 h-4 mr-2" />Check User
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleSaveBoard}>
+            Save Board
           </Button>
           <Button variant="outline" size="sm" onClick={handleInviteClick}>
             <Users className="w-4 h-4 mr-2" />Invite
@@ -883,7 +1021,7 @@ export default function Home() {
               />
             ))}
           </div>
-        </ZoomableGrid>,l
+        </ZoomableGrid>
       </div>
 
       {/* User Check Modal */}
