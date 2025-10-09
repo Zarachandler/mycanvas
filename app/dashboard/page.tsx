@@ -123,6 +123,153 @@ const BoardFilterBar: React.FC<BoardFilterBarProps> = ({
   );
 };
 
+// TemplateBar Component
+const TemplateBar = ({ onTemplateClick }: { onTemplateClick: (templateId: string) => void }) => {
+  const templates = [
+    { 
+      id: 'blank',
+      label: "Blank board", 
+      icon: <span style={{
+        fontSize: "44px",
+        color: "#bfc3c9",
+        display: "block",
+        lineHeight: "110px"
+      }}>+</span> 
+    },
+    { 
+      id: 'flowchart',
+      label: "Flowchart", 
+      icon: <div style={{
+        height: "70px", 
+        marginTop: "20px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }}>
+        <Workflow className="w-12 h-12 text-blue-500" />
+      </div> 
+    },
+    { 
+      id: 'mindmap',
+      label: "Mind Map", 
+      icon: <div style={{
+        height: "70px", 
+        marginTop: "20px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }}>
+        <Brain className="w-12 h-12 text-purple-500" />
+      </div> 
+    },
+    { 
+      id: 'kanban',
+      label: "Kanban Framework", 
+      icon: <div style={{
+        height: "70px", 
+        marginTop: "20px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }}>
+        <LayoutGrid className="w-12 h-12 text-yellow-500" />
+      </div> 
+    },
+    { 
+      id: 'retrospective',
+      label: "Quick Retrospective", 
+      icon: <div style={{
+        height: "70px", 
+        marginTop: "20px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }}>
+        <RefreshCw className="w-12 h-12 text-green-500" />
+      </div> 
+    },
+    { 
+      id: 'brainwriting',
+      label: "Brainwriting", 
+      icon: <div style={{
+        height: "70px", 
+        marginTop: "20px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }}>
+        <Lightbulb className="w-12 h-12 text-pink-500" />
+      </div> 
+    },
+    { 
+      id: 'miroverse',
+      label: "From Miroverse →", 
+      icon: <div style={{
+        height: "70px", 
+        marginTop: "20px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }}>
+        <Shapes className="w-12 h-12 text-orange-500" />
+      </div> 
+    }
+  ];
+
+  return (
+    <div style={{
+      background: "#f5f8fb",
+      borderRadius: 16,
+      boxSizing: "border-box",
+      padding: "25px 18px 10px 18px",
+      marginTop: 18
+    }}>
+      <div style={{
+        display: "flex",
+        justifyContent: "start",
+        gap: "32px",
+        overflowX: "auto",
+        paddingBottom: "10px"
+      }}>
+        {templates.map((template) => (
+          <div 
+            key={template.id} 
+            style={{
+              minWidth: 130,
+              textAlign: "center",
+              cursor: "pointer"
+            }}
+            onClick={() => onTemplateClick(template.id)}
+            className="transition-transform duration-200 hover:scale-105"
+          >
+            <div style={{
+              background: "#fff",
+              border: "1.5px solid #ececef",
+              borderRadius: 18,
+              width: "130px",
+              height: "110px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.2s ease"
+            }} className="hover:shadow-md hover:border-blue-300">
+              {template.icon}
+            </div>
+            <div style={{
+              marginTop: 7,
+              color: "#4a545c",
+              fontSize: 18,
+              fontWeight: "500"
+            }}>
+              {template.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // ---------- TEMPLATE FUNCTIONALITIES ----------
 
 const getTemplateInitialData = (templateId: string) => {
@@ -568,9 +715,16 @@ export default function Dashboard() {
     router.push('/login');
   };
 
-  const handleTemplateClick = (template: TemplateType) => {
+  const handleTemplateClick = (templateId: string) => {
     // Create a new board and redirect to canvas
     const newBoardId = `board-${Date.now()}`;
+    
+    // Get template title
+    const template = templates.find(t => t.id === templateId) || {
+      id: templateId,
+      title: templateId === 'miroverse' ? 'From Miroverse' : 'Blank Board'
+    };
+    
     const newBoard: BoardMetadata = {
       id: newBoardId,
       name: `${template.title}`,
@@ -578,15 +732,15 @@ export default function Dashboard() {
       lastOpened: new Date().toISOString(),
       isStarred: false,
       isArchived: false,
-      templateType: template.id
+      templateType: templateId
     };
     
     // Save initial template data
-    const templateData = getTemplateInitialData(template.id);
+    const templateData = getTemplateInitialData(templateId);
     localStorage.setItem(`board-${newBoardId}-data`, JSON.stringify(templateData));
     
     // Save template tools configuration
-    const templateTools = getTemplateTools(template.id);
+    const templateTools = getTemplateTools(templateId);
     localStorage.setItem(`board-${newBoardId}-tools`, JSON.stringify(templateTools));
     
     // Save to recent boards with deduplication
@@ -596,7 +750,7 @@ export default function Dashboard() {
     setRecentBoard(newBoard);
     
     // Redirect to canvas with the new board
-    router.push(`/canvas?board=${newBoardId}&template=${template.id}`);
+    router.push(`/canvas?board=${newBoardId}&template=${templateId}`);
   };
 
   const handleQuickCreate = () => {
@@ -979,7 +1133,7 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
 
-              {/* Templates Grid */}
+              {/* Template Bar Section */}
               <div className="mb-12">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-semibold text-gray-900">Start with a template</h3>
@@ -989,63 +1143,7 @@ export default function Dashboard() {
                   </Button>
                 </div>
                 
-                <div className="grid grid-cols-6 gap-4">
-                  {templates.map((template) => (
-                    <Card
-                      key={template.id}
-                      className={`${template.bgColor} ${template.borderColor} ${template.hoverColor} border cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105 group`}
-                      onClick={() => handleTemplateClick(template)}
-                    >
-                      <CardContent className="p-6">
-                        <div className="flex flex-col items-center text-center">
-                          <div className="mb-4 flex items-center justify-center h-16 group-hover:scale-110 transition-transform duration-300">
-                            {template.icon}
-                          </div>
-                          <h4 className="text-sm font-semibold text-gray-900 mb-1 group-hover:text-blue-700 transition-colors">
-                            {template.title}
-                          </h4>
-                          <p className="text-xs text-gray-600 group-hover:text-blue-600 transition-colors">
-                            {template.description}
-                          </p>
-                          <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            <ArrowRight className="w-4 h-4 text-blue-500" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  
-                  {/* From Miroverse */}
-                  <Card 
-                    className="bg-gradient-to-br from-orange-50 to-yellow-100 border-orange-200 hover:from-orange-100 hover:to-yellow-200 border cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105 group"
-                    onClick={() => handleTemplateClick({
-                      id: 'miroverse',
-                      title: 'From Miroverse',
-                      description: 'Community templates',
-                      icon: <Shapes className="w-8 h-8 text-orange-500" />,
-                      bgColor: 'bg-gradient-to-br from-orange-50 to-yellow-100',
-                      borderColor: 'border-orange-200',
-                      hoverColor: 'hover:from-orange-100 hover:to-yellow-200'
-                    })}
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex flex-col items-center text-center">
-                        <div className="mb-4 flex items-center justify-center h-16 group-hover:scale-110 transition-transform duration-300">
-                          <Shapes className="w-8 h-8 text-orange-500" />
-                        </div>
-                        <h4 className="text-sm font-semibold text-gray-900 mb-1 group-hover:text-orange-700 transition-colors">
-                          From Miroverse
-                        </h4>
-                        <p className="text-xs text-gray-600 group-hover:text-orange-600 transition-colors">
-                          Community templates
-                        </p>
-                        <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                          <ArrowRight className="w-4 h-4 text-orange-500" />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                <TemplateBar onTemplateClick={handleTemplateClick} />
               </div>
 
               {/* Empty State */}
@@ -1253,7 +1351,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
             
-            {/* Templates Grid */}
+            {/* Template Bar Section */}
             <div className="mb-12">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-semibold text-gray-900">Start with a template</h3>
@@ -1263,63 +1361,7 @@ export default function Dashboard() {
                 </Button>
               </div>
               
-              <div className="grid grid-cols-6 gap-4">
-                {templates.map((template) => (
-                  <Card
-                    key={template.id}
-                    className={`${template.bgColor} ${template.borderColor} ${template.hoverColor} border cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105 group`}
-                    onClick={() => handleTemplateClick(template)}
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex flex-col items-center text-center">
-                        <div className="mb-4 flex items-center justify-center h-16 group-hover:scale-110 transition-transform duration-300">
-                          {template.icon}
-                        </div>
-                        <h4 className="text-sm font-semibold text-gray-900 mb-1 group-hover:text-blue-700 transition-colors">
-                          {template.title}
-                        </h4>
-                        <p className="text-xs text-gray-600 group-hover:text-blue-600 transition-colors">
-                          {template.description}
-                        </p>
-                        <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                          <ArrowRight className="w-4 h-4 text-blue-500" />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-                
-                {/* From Miroverse */}
-                <Card 
-                  className="bg-gradient-to-br from-orange-50 to-yellow-100 border-orange-200 hover:from-orange-100 hover:to-yellow-200 border cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105 group"
-                  onClick={() => handleTemplateClick({
-                    id: 'miroverse',
-                    title: 'From Miroverse',
-                    description: 'Community templates',
-                    icon: <Shapes className="w-8 h-8 text-orange-500" />,
-                    bgColor: 'bg-gradient-to-br from-orange-50 to-yellow-100',
-                    borderColor: 'border-orange-200',
-                    hoverColor: 'hover:from-orange-100 hover:to-yellow-200'
-                  })}
-                >
-                  <CardContent className="p-6">
-                    <div className="flex flex-col items-center text-center">
-                      <div className="mb-4 flex items-center justify-center h-16 group-hover:scale-110 transition-transform duration-300">
-                        <Shapes className="w-8 h-8 text-orange-500" />
-                      </div>
-                      <h4 className="text-sm font-semibold text-gray-900 mb-1 group-hover:text-orange-700 transition-colors">
-                        From Miroverse
-                      </h4>
-                      <p className="text-xs text-gray-600 group-hover:text-orange-600 transition-colors">
-                        Community templates
-                      </p>
-                      <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                        <ArrowRight className="w-4 h-4 text-orange-500" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              <TemplateBar onTemplateClick={handleTemplateClick} />
             </div>
 
             {/* Filter Bar */}

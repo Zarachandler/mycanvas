@@ -12,6 +12,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import ZoomableGrid from "../board/ZoomableGrid";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from '@supabase/supabase-js';
@@ -85,6 +87,115 @@ type BoardMetadata = {
   lastOpened: string;
 };
 
+// ---------- USER DROPDOWN COMPONENT ----------
+function UserDropdown({ email }: { email: string | null }) {
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [collaborationOpen, setCollaborationOpen] = useState(false);
+
+  const handleOpen = (event: React.MouseEvent<HTMLButtonElement>) => setAnchorEl(event.currentTarget);
+  const handleClose = () => setAnchorEl(null);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  };
+
+  const startCollaboration = () => {
+    setCollaborationOpen(true);
+    setAnchorEl(null);
+  };
+
+  return (
+    <div className="relative">
+      <Button 
+        onClick={handleOpen} 
+        variant="outline" 
+        className="flex items-center gap-2 border-yellow-400 text-yellow-700 hover:bg-yellow-50"
+      >
+        <User className="w-4 h-4" />
+        {email ? email : "Loading..."}
+      </Button>
+      
+      {anchorEl && (
+        <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+          <div className="py-1">
+            <button
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              onClick={handleClose}
+            >
+              Profile Settings
+            </button>
+
+            <button
+              className="w-full text-left px-4 py-2 text-sm text-yellow-600 hover:bg-gray-100 cursor-pointer"
+              onClick={startCollaboration}
+            >
+              Start Share the Collaboration
+            </button>
+
+            <button
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              onClick={handleLogout}
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Collaboration Dialog */}
+      <Dialog open={collaborationOpen} onOpenChange={setCollaborationOpen}>
+        <DialogContent className="w-[480px] max-w-full rounded-lg p-6">
+          <DialogHeader>
+            <DialogTitle>Start Collaboration</DialogTitle>
+            <DialogDescription className="mb-4">
+              Invite people to collaborate on this project
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="collab-emails" className="mb-2">Invite people</Label>
+              <Input
+                id="collab-emails"
+                type="text"
+                placeholder="Enter email addresses"
+                className="mb-2"
+              />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Input
+                readOnly
+                value="https://your-app.com/collaboration-link"
+                className="flex-1 text-xs"
+              />
+              <Button size="sm" onClick={() => {
+                navigator.clipboard.writeText("https://your-app.com/collaboration-link");
+              }}>
+                Copy link
+              </Button>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setCollaborationOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => {
+                // Add your collaboration logic here
+                alert('Collaboration started!');
+                setCollaborationOpen(false);
+              }}>
+                Start Collaboration
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ---------- UTILITY FUNCTIONS ----------
 function saveBoardMetadata(board: BoardMetadata) {
   let recentBoards: BoardMetadata[] = JSON.parse(localStorage.getItem('recentBoards') || '[]');
@@ -142,13 +253,13 @@ function MessageIconWithTextarea({
             </button>
             <div>
               <button
-                className="text-sm text-blue-600 hover:underline mr-3"
+                className="text-sm text-yellow-600 hover:underline mr-3"
                 onClick={() => setShowTextarea(false)}
               >
                 Cancel
               </button>
               <button
-                className="text-sm bg-blue-600 text-white px-3 py-1 rounded"
+                className="text-sm bg-yellow-600 text-white px-3 py-1 rounded"
                 onClick={() => setShowTextarea(false)}
               >
                 Send
@@ -206,7 +317,7 @@ function UserCheckModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+      {/* <div className="bg-white rounded-lg p-6 w-full max-w-md">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">Check User</h2>
           <button
@@ -251,7 +362,7 @@ function UserCheckModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             </div>
           )}
         </form>
-      </div>
+      </div> */}
     </div>
   );
 }
@@ -266,6 +377,7 @@ export default function Home() {
   const [showPalette, setShowPalette] = useState(false);
   const [showShapePalette, setShowShapePalette] = useState(false);
   const [showUserCheck, setShowUserCheck] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [textAreas, setTextAreas] = useState<StickyNoteType[]>([]);
@@ -416,8 +528,23 @@ export default function Home() {
     },
   ];
 
+  // ---------- AUTHENTICATION ----------
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUserEmail(user?.email || null);
+    };
+
+    getUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUserEmail(session?.user?.email || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   // ---------- BOARD ID/NAME MANAGEMENT ----------
-  // On create or open, use the name for the id:
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     let boardParam = urlParams.get('board');
@@ -426,7 +553,6 @@ export default function Home() {
       setBoardName(boardParam);
       setBoardOwner("You");
       
-      // Save to metadata
       saveBoardMetadata({
         id: boardParam,
         name: boardParam,
@@ -439,7 +565,6 @@ export default function Home() {
         description: `Opened board: ${boardParam}`,
       });
     } else {
-      // If no board parameter, use default values
       const defaultBoardId = "default-board";
       const defaultBoardName = "Untitled Board";
       setBoardId(defaultBoardId);
@@ -458,7 +583,6 @@ export default function Home() {
   useEffect(() => {
     if (!boardId) return;
     
-    // Update metadata
     let boards = JSON.parse(localStorage.getItem("recentBoards") || "[]");
     const idx = boards.findIndex((b: BoardMetadata) => b.id === boardId);
     if (idx !== -1) {
@@ -493,7 +617,6 @@ export default function Home() {
         });
       }
     } else {
-      // Initialize with empty arrays if no saved data
       setShapes([]);
       setTextAreas([]);
       setFreehandPaths([]);
@@ -688,7 +811,7 @@ export default function Home() {
 
   const handleBoardNameChange = (newName: string) => {
     setBoardName(newName);
-    setBoardId(newName); // use name as id for links and storage
+    setBoardId(newName);
     
     saveBoardMetadata({
       id: newName,
@@ -772,53 +895,62 @@ export default function Home() {
 
   // ---------- RENDER ----------
   return (
-    <main className="h-screen w-screen flex flex-col">
+    <main className="h-screen w-screen flex flex-col ">
       <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Link href="/dashboard" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-xl flex items-center justify-center">
+            <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-xl flex items-center justify-center">
               <div className="w-4 h-4 bg-white rounded-md opacity-90"></div>
             </div>
-            <span className="font-semibold text-gray-900">Miro</span>
+            <span className="font-bold text-gray-900 text-3xl">miro</span>
           </Link>
           <div className="flex items-center space-x-2">
             <Input
               value={boardName}
               onChange={(e) => handleBoardNameChange(e.target.value)}
-              className="border-none bg-transparent text-lg font-semibold text-gray-900 p-0 h-auto"
+              className="h-8 w-20 px-3 text-xl font-medium text-yellow-700 border border-yellow-400 bg-yellow-50 focus:outline focus:outline-yellow-500 ring-0 rounded transition"
             />
             <Badge variant="secondary" className="text-xs">Live</Badge>
           </div>
+          <Button className="bg-yellow-100 text-yellow-900 h-8 px-4 rounded border-yellow-200 text-sm font-semibold shadow-none hover:bg-yellow-200" variant="outline">
+            Upgrade
+          </Button>
         </div>
         
         {/* Collaborators Panel */}
-        <div className="ml-[560px]">
+        <div className="ml-[400px]">
           <CollaboratorsPanel 
             collaborators={collaborators} 
             owner={owner}
           />
         </div>
         
-        <div className="flex items-center space-x-9">
-          <Button variant="outline" size="sm" onClick={handleUserCheckClick}>
-            <User className="w-4 h-4 mr-2" />Check User
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleSaveBoard}>
-            Save Board
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleInviteClick}>
-            <Users className="w-4 h-4 mr-2" />Invite
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleShareClick}>
-            <Share className="w-4 h-4 mr-2" />Share
-          </Button>
-          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handlePresentClick}>
-            <Play className="w-4 h-4 mr-2" />Present
-          </Button>
-          <Button variant="ghost" size="sm">
-            <MoreHorizontal className="w-4 h-4" />
-          </Button>
+        <div className="bg-white rounded-lg shadow-lg p-4">
+          <div className="flex items-center justify-center space-x-2">
+            <Button variant="outline" size="sm" onClick={handleSaveBoard}>
+              Save Board
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleInviteClick}>
+              <Users className="w-4 h-4 mr-2" />
+              Invite
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleShareClick}>
+              <Share className="w-4 h-4 mr-2" />
+              Share
+            </Button>
+            <Button size="sm" className="bg-yellow-600 hover:bg-yellow-700 text-white" onClick={handlePresentClick}>
+              <Play className="w-4 h-4 mr-2" />
+              Present
+            </Button>
+          </div>
         </div>
+        
+        {/* User Dropdown */}
+        <UserDropdown email={userEmail} />
+        
+        <Button variant="ghost" size="sm">
+          <MoreHorizontal className="h-4" />
+        </Button>
       </header>
 
       <div className="flex flex-1">
@@ -954,6 +1086,7 @@ export default function Home() {
                     )
                   );
                 }}
+
                 onClick={(e) => {
                   if (activeTool === "erase") {
                     e.stopPropagation();
