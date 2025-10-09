@@ -90,7 +90,6 @@ export default function CollaboratorsPanel({
   const [invitedEmails, setInvitedEmails] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showSendButton, setShowSendButton] = useState(false);
-  const [individualSending, setIndividualSending] = useState<{[email: string]: boolean}>({});
 
   const filteredCollaborators = owner
     ? collaborators.filter((c) => c.id !== owner.id)
@@ -110,55 +109,14 @@ export default function CollaboratorsPanel({
     setInvitedEmails((prev) => prev.filter((email) => email !== emailToRemove));
   };
 
-  // Individual invitation acceptance function (replaced the send function)
-  const acceptIndividualInvitation = async (email: string) => {
-    setIndividualSending(prev => ({ ...prev, [email]: true }));
-
-    try {
-      // Simulate getting a token (in real app, this would come from the invitation email)
-      const token = `invite_${email}_${boardId}_${Date.now()}`;
-      
-      const response = await fetch('/api/invitations/accept', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          token,
-          email,
-          boardTitle,
-          boardId,
-          accessLevel 
-        }),
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        alert(`Invitation accepted for ${email}! They can now access the board.`);
-        // Remove the email from the list after successful acceptance
-        setInvitedEmails(prev => prev.filter(e => e !== email));
-        
-        // Optionally add the collaborator to the current list
-        console.log('Collaborator added:', result.collaborator);
-        
-      } else {
-        const data = await response.json();
-        alert(`Failed to accept invitation for ${email}: ${data.message}`);
-      }
-    } catch (error) {
-      alert(`Error processing invitation for ${email}`);
-      console.error('Invitation acceptance error:', error);
-    } finally {
-      setIndividualSending(prev => ({ ...prev, [email]: false }));
-    }
-  };
-
-  // Bulk collaboration function
+  // Bulk collaboration function sending invitation links to all emails
   const handleStartCollaboration = async () => {
     if (invitedEmails.length === 0) return;
 
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/invite-collaborators', {
+      const response = await fetch('/api/canvas/save/invitation/accepts',{
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -166,7 +124,7 @@ export default function CollaboratorsPanel({
           canvasId: boardId,
           boardTitle: boardTitle,
           canvasData: canvasData,
-          accessLevel: accessLevel
+          accessLevel: accessLevel,
         }),
       });
 
@@ -178,14 +136,13 @@ export default function CollaboratorsPanel({
       }
 
       console.log('Collaboration started successfully:', result);
-      
-      // Show success message based on results
+
       if (result.failed && result.failed.length > 0) {
         alert(`Collaboration partially started. ${result.successful.length} successful, ${result.failed.length} failed.`);
       } else {
         alert('Collaboration started successfully! Invitations sent to all users.');
       }
-      
+
       setOpen(false);
       setInvitedEmails([]);
       setShowSendButton(false);
@@ -244,7 +201,7 @@ export default function CollaboratorsPanel({
               </Label>
               <InviteEmailBar onAdd={handleAddEmail} />
 
-              {/* Show invited emails with individual accept buttons */}
+              {/* Show invited emails without individual accept button */}
               {invitedEmails.length > 0 && (
                 <div className="mt-2 space-y-2">
                   <Label className="text-xs text-gray-500">Pending invitations:</Label>
@@ -252,7 +209,7 @@ export default function CollaboratorsPanel({
                     {invitedEmails.map((email, index) => (
                       <div key={index} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg">
                         <span className="text-sm flex-1">{email}</span>
-                        <div className="flex items-center gap-1">
+                        <div>
                           <Button
                             size="sm"
                             variant="outline"
@@ -260,18 +217,6 @@ export default function CollaboratorsPanel({
                             className="h-7 px-2 text-xs"
                           >
                             Remove
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => acceptIndividualInvitation(email)}
-                            disabled={individualSending[email]}
-                            className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700"
-                          >
-                            {individualSending[email] ? (
-                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <>Accept</>
-                            )}
                           </Button>
                         </div>
                       </div>
@@ -357,7 +302,7 @@ export default function CollaboratorsPanel({
               {filteredCollaborators.length === 0 && invitedEmails.length === 0 && (
                 <div className="text-center py-4 text-sm text-gray-500">
                   <Users className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                  <div>You haven't invited anyone to your team yet</div>
+                  <div>You haven&apos;t invited anyone to your team yet</div>
                 </div>
               )}
 
@@ -381,8 +326,11 @@ export default function CollaboratorsPanel({
                       <div className="text-xs text-gray-500">{collaborator.email}</div>
                     </div>
                     <Badge variant="outline" className="text-xs">
-                      {accessLevel === 'viewer' ? 'Viewer' : 
-                       accessLevel === 'commenter' ? 'Commenter' : 'Editor'}
+                      {accessLevel === 'viewer'
+                        ? 'Viewer'
+                        : accessLevel === 'commenter'
+                        ? 'Commenter'
+                        : 'Editor'}
                     </Badge>
                   </div>
                 );
