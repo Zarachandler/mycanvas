@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { Users, Copy, Globe, UserPlus } from 'lucide-react';
+import { Users, Copy, Globe, UserPlus, X } from 'lucide-react';
 
 export interface Collaborator {
   id: string;
@@ -36,6 +36,7 @@ interface CollaboratorsPanelProps {
   boardTitle?: string;
   canvasData?: any;
   boardId?: string;
+  onCollaborationStart?: (emails: string[], accessLevel: string) => void;
 }
 
 const ACCESS_OPTIONS = [
@@ -51,8 +52,16 @@ function InviteEmailBar({ onAdd }: { onAdd: (email: string) => void }) {
 
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isValidEmail(email)) {
+      onAdd(email);
+      setEmail('');
+    }
+  };
+
   return (
-    <div className="flex items-center gap-2">
+    <form onSubmit={handleSubmit} className="flex items-center gap-2">
       <Input
         type="email"
         placeholder="Enter email address"
@@ -61,19 +70,15 @@ function InviteEmailBar({ onAdd }: { onAdd: (email: string) => void }) {
         className="flex-1"
       />
       <Button
-        type="button"
+        type="submit"
         size="icon"
         disabled={!isValidEmail(email)}
-        onClick={() => {
-          onAdd(email);
-          setEmail('');
-        }}
         title="Add user"
         className="p-2"
       >
         <UserPlus className="w-5 h-5" />
       </Button>
-    </div>
+    </form>
   );
 }
 
@@ -84,9 +89,10 @@ export default function CollaboratorsPanel({
   boardTitle = 'My New Board',
   canvasData = { nodes: [], edges: [] },
   boardId = 'default-board',
+  onCollaborationStart,
 }: CollaboratorsPanelProps) {
   const [open, setOpen] = useState(false);
-  const [accessLevel, setAccessLevel] = useState(ACCESS_OPTIONS[0].value);
+  const [accessLevel, setAccessLevel] = useState(ACCESS_OPTIONS[3].value); // Default to editor
   const [invitedEmails, setInvitedEmails] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -100,12 +106,28 @@ export default function CollaboratorsPanel({
     ACCESS_OPTIONS.find((option) => option.value === accessLevel)?.label || ACCESS_OPTIONS[0].label;
 
   const handleAddEmail = (email: string) => {
+    const normalizedEmail = email.toLowerCase().trim();
     // Prevent duplicates
-    setInvitedEmails((prev) => (prev.includes(email) ? prev : [...prev, email]));
+    setInvitedEmails((prev) => 
+      prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]
+    );
   };
 
   const removeInvitedEmail = (emailToRemove: string) => {
     setInvitedEmails((prev) => prev.filter((email) => email !== emailToRemove));
+  };
+
+  // Generate shareable link
+  const getShareableLink = () => {
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/canvas?board=${boardId}`;
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(getShareableLink()).then(() => {
+      // You can replace this with a toast notification
+      alert('Link copied to clipboard!');
+    });
   };
 
   // Direct collaboration function - grants direct access
@@ -118,7 +140,11 @@ export default function CollaboratorsPanel({
     setIsLoading(true);
 
     try {
-      if (filteredEmails.length > 0) {
+      // Call the callback if provided
+      if (onCollaborationStart) {
+        onCollaborationStart(filteredEmails, accessLevel);
+      } else {
+        // Fallback to your existing API call
         const response = await fetch('/api/canvas/collaborators/add', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -145,11 +171,6 @@ export default function CollaboratorsPanel({
         }
       }
 
-      // You may also update UI or state for the logged-in user access here if needed:
-      if (userEmail) {
-        console.log(`Access granted directly for logged-in user: ${userEmail}`);
-      }
-
       setOpen(false);
       setInvitedEmails([]);
     } catch (error) {
@@ -163,68 +184,82 @@ export default function CollaboratorsPanel({
   return (
     <div className="relative">
       {/* Collaborators Avatars */}
-      <div className="flex items-center -space-x-1 cursor-pointer" onClick={() => setOpen(true)}>
-        {filteredCollaborators.map((c) => {
+      <div 
+        className="flex items-center -space-x-1 cursor-pointer hover:opacity-80 transition-opacity" 
+        onClick={() => setOpen(true)}
+        title="Manage collaborators"
+      >
+        {filteredCollaborators.slice(0, 3).map((c) => {
           const initial =
             c.name?.trim()?.[0]?.toUpperCase() || (c.email?.[0]?.toUpperCase() || '?');
           return (
-            <Avatar key={c.id} className="w-8 h-8 border-2 border-white">
-              <AvatarFallback className="text-xs font-medium" style={{ backgroundColor: c.color }}>
+            <Avatar key={c.id} className="w-8 h-8 border-2 border-white shadow-sm">
+              <AvatarFallback 
+                className="text-xs font-medium text-white" 
+                style={{ backgroundColor: c.color }}
+              >
                 {initial}
               </AvatarFallback>
             </Avatar>
           );
         })}
+        {filteredCollaborators.length > 3 && (
+          <div className="w-8 h-8 bg-gray-300 rounded-full border-2 border-white flex items-center justify-center shadow-sm">
+            <span className="text-xs font-medium text-gray-600">
+              +{filteredCollaborators.length - 3}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Start Collaboration Button - Bottom Right */}
       <Button
         onClick={() => setOpen(true)}
-        className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full p-0 bg-yellow-500 hover:bg-yellow-600 text-white shadow-lg"
+        className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full p-0 bg-yellow-500 hover:bg-yellow-600 text-white shadow-lg border-2 border-white"
         size="icon"
+        title="Add collaborators"
       >
         <Users className="w-4 h-4" />
       </Button>
 
       {/* Invite Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-[480px] max-w-full rounded-lg p-6">
+        <DialogContent className="w-[480px] max-w-full rounded-lg p-6 max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-lg">
               <Users className="w-5 h-5" />
               Add Collaborators
             </DialogTitle>
-            <DialogDescription className="mb-4">
-              Enter email addresses to grant direct access
+            <DialogDescription className="text-sm">
+              Invite people to collaborate on this board
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Invite Email Bar */}
-            <div>
-              <Label htmlFor="invite-emails" className="mb-2">
+            <div className="space-y-3">
+              <Label htmlFor="invite-emails" className="text-sm font-medium">
                 Add people by email
               </Label>
               <InviteEmailBar onAdd={handleAddEmail} />
 
               {/* Show added emails */}
               {invitedEmails.length > 0 && (
-                <div className="mt-2 space-y-2">
+                <div className="space-y-2">
                   <Label className="text-xs text-gray-500">Users to be added:</Label>
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
                     {invitedEmails.map((email, index) => (
-                      <div key={index} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg">
-                        <span className="text-sm flex-1">{email}</span>
-                        <div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => removeInvitedEmail(email)}
-                            className="h-7 px-2 text-xs"
-                          >
-                            Remove
-                          </Button>
-                        </div>
+                      <div key={index} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg border">
+                        <span className="text-sm flex-1 truncate">{email}</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => removeInvitedEmail(email)}
+                          className="h-6 w-6 p-0 hover:bg-gray-200"
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -232,35 +267,36 @@ export default function CollaboratorsPanel({
               )}
             </div>
 
+            {/* Shareable Link */}
             <div className="space-y-2">
-              <Label className="text-sm">Shareable link</Label>
+              <Label className="text-sm font-medium">Shareable link</Label>
               <div className="flex items-center space-x-2">
                 <Input
                   readOnly
-                  value={`https://your-app.com/board/${boardId}`}
+                  value={getShareableLink()}
                   className="flex-1 text-xs"
                 />
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`https://your-app.com/board/${boardId}`);
-                  }}
+                  onClick={handleCopyLink}
+                  className="shrink-0"
                 >
                   <Copy className="w-4 h-4" />
                 </Button>
               </div>
             </div>
 
+            {/* Access Control */}
             <div className="space-y-3">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 Board Access
               </div>
 
               {/* Current User */}
-              <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-100">
                 <Avatar className="w-8 h-8">
-                  <AvatarFallback className="bg-red-100 text-red-600 text-xs font-bold">
+                  <AvatarFallback className="bg-blue-100 text-blue-600 text-xs font-bold">
                     {userInitial}
                   </AvatarFallback>
                 </Avatar>
@@ -274,13 +310,15 @@ export default function CollaboratorsPanel({
               </div>
 
               {/* Anyone with link */}
-              <div className="flex items-center gap-3 p-2 rounded-lg border">
+              <div className="flex items-center gap-3 p-3 rounded-lg border bg-gray-50">
                 <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
                   <Globe className="w-4 h-4 text-gray-600" />
                 </div>
                 <div className="flex-1">
                   <div className="text-sm font-medium">Anyone with the link</div>
-                  <div className="text-xs text-gray-500">People not signed in</div>
+                  <div className="text-xs text-gray-500">
+                    {accessLevel === 'no-access' ? 'No access' : `${accessLabel} access`}
+                  </div>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -304,48 +342,52 @@ export default function CollaboratorsPanel({
                 </DropdownMenu>
               </div>
 
-              {/* Empty state message */}
-              {filteredCollaborators.length === 0 && invitedEmails.length === 0 && (
-                <div className="text-center py-4 text-sm text-gray-500">
-                  <Users className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                  <div>You haven&apos;t added anyone to your board yet</div>
+              {/* Current Collaborators */}
+              {filteredCollaborators.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-gray-500">Current collaborators:</Label>
+                  {filteredCollaborators.map((collaborator) => {
+                    const initial =
+                      collaborator.name?.trim()?.[0]?.toUpperCase() ||
+                      (collaborator.email?.[0]?.toUpperCase() || '?');
+                    return (
+                      <div key={collaborator.id} className="flex items-center gap-3 p-2 rounded-lg border bg-white">
+                        <Avatar className="w-8 h-8">
+                          <AvatarFallback
+                            className="text-xs font-medium text-white"
+                            style={{ backgroundColor: collaborator.color }}
+                          >
+                            {initial}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">{collaborator.name}</div>
+                          {collaborator.email && (
+                            <div className="text-xs text-gray-500">{collaborator.email}</div>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="text-xs bg-green-50">
+                          Collaborator
+                        </Badge>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
-              {/* Collaborators list */}
-              {filteredCollaborators.map((collaborator) => {
-                const initial =
-                  collaborator.name?.trim()?.[0]?.toUpperCase() ||
-                  (collaborator.email?.[0]?.toUpperCase() || '?');
-                return (
-                  <div key={collaborator.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                    <Avatar className="w-8 h-8">
-                      <AvatarFallback
-                        className="text-xs font-medium"
-                        style={{ backgroundColor: collaborator.color }}
-                      >
-                        {initial}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium">{collaborator.name}</div>
-                      <div className="text-xs text-gray-500">{collaborator.email}</div>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      {accessLevel === 'viewer'
-                        ? 'Viewer'
-                        : accessLevel === 'commenter'
-                        ? 'Commenter'
-                        : 'Editor'}
-                    </Badge>
-                  </div>
-                );
-              })}
+              {/* Empty state message */}
+              {filteredCollaborators.length === 0 && invitedEmails.length === 0 && (
+                <div className="text-center py-6 text-sm text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+                  <Users className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                  <div>No collaborators yet</div>
+                  <div className="text-xs mt-1">Add people to start collaborating</div>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Dialog Footer */}
-          <DialogFooter className="flex gap-2 sm:gap-0">
+          <DialogFooter className="flex gap-2 sm:gap-0 pt-4 border-t">
             <Button
               variant="outline"
               onClick={() => {
@@ -360,7 +402,7 @@ export default function CollaboratorsPanel({
             <Button
               onClick={handleStartCollaboration}
               disabled={isLoading || invitedEmails.length === 0}
-              className="bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed min-w-32"
             >
               {isLoading ? (
                 <>
@@ -380,6 +422,3 @@ export default function CollaboratorsPanel({
     </div>
   );
 }
-
-
-
