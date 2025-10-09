@@ -34,7 +34,9 @@ import {
   LayoutGrid, 
   RefreshCw,
   Lightbulb,
-  Shapes
+  Shapes,
+  Mail,
+  UserPlus
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -57,6 +59,28 @@ type TemplateType = {
   bgColor: string;
   borderColor: string;
   hoverColor: string;
+};
+
+type CollaborationInvitation = {
+  id: string;
+  boardId: string;
+  boardName: string;
+  fromUser: string;
+  fromUserEmail: string;
+  toUserEmail: string;
+  status: 'pending' | 'accepted' | 'declined';
+  sentAt: string;
+  expiresAt: string;
+};
+
+type Notification = {
+  id: string;
+  type: 'collaboration_invitation' | 'system' | 'info';
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+  data?: any;
 };
 
 // BoardFilterBar Props Interface
@@ -674,11 +698,57 @@ const templates: TemplateType[] = [
   }
 ];
 
+// Collaboration Functions
+const sendCollaborationInvitation = (toEmail: string, boardId: string, boardName: string) => {
+  const fromUser = localStorage.getItem('userEmail') || 'Unknown User';
+  const fromUserEmail = localStorage.getItem('userEmail') || 'unknown@example.com';
+  
+  const invitation: CollaborationInvitation = {
+    id: `invite-${Date.now()}`,
+    boardId: boardId,
+    boardName: boardName,
+    fromUser: fromUser.split('@')[0],
+    fromUserEmail: fromUserEmail,
+    toUserEmail: toEmail,
+    status: 'pending',
+    sentAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+  };
+
+  // Save invitation to localStorage
+  const allInvitations = JSON.parse(localStorage.getItem('collaborationInvitations') || '[]');
+  allInvitations.push(invitation);
+  localStorage.setItem('collaborationInvitations', JSON.stringify(allInvitations));
+
+  // Create notification for the invited user
+  const notification: Notification = {
+    id: `notif-${Date.now()}`,
+    type: 'collaboration_invitation',
+    title: 'Collaboration Invitation',
+    message: `You've been invited to collaborate on "${boardName}" by ${fromUser.split('@')[0]}`,
+    read: false,
+    createdAt: new Date().toISOString(),
+    data: {
+      invitationId: invitation.id,
+      targetEmail: toEmail,
+      boardId: boardId
+    }
+  };
+
+  const allNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+  allNotifications.push(notification);
+  localStorage.setItem('notifications', JSON.stringify(allNotifications));
+
+  return invitation;
+};
+
 export default function Dashboard() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
   const [userInitials, setUserInitials] = useState('NA');
+  const [userEmail, setUserEmail] = useState('');
   const [recentBoard, setRecentBoard] = useState<BoardMetadata | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [boards, setBoards] = useState<BoardMetadata[]>([]);
@@ -693,12 +763,22 @@ export default function Dashboard() {
   const [ownedBy, setOwnedBy] = useState("anyone");
   const [sortBy, setSortBy] = useState("last-opened");
 
+  // Notification states
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [collaborationInvitations, setCollaborationInvitations] = useState<CollaborationInvitation[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   useEffect(() => {
-    // Get user email from localStorage (should be set by login page)
-    const userEmail = localStorage.getItem('userEmail');
-    if (userEmail) {
-      const initials = userEmail.split('@')[0].slice(0, 2).toUpperCase();
+    // Get user email from localStorage
+    const storedUserEmail = localStorage.getItem('userEmail');
+    if (storedUserEmail) {
+      setUserEmail(storedUserEmail);
+      const initials = storedUserEmail.split('@')[0].slice(0, 2).toUpperCase();
       setUserInitials(initials);
+      
+      // Load notifications and collaboration invitations for this user
+      loadUserNotifications(storedUserEmail);
+      loadCollaborationInvitations(storedUserEmail);
     }
 
     // Load and deduplicate recent boards
@@ -709,7 +789,138 @@ export default function Dashboard() {
     // Get only the most recent board (first one in the array)
     const mostRecentBoard = uniqueBoards.length > 0 ? uniqueBoards[0] : null;
     setRecentBoard(mostRecentBoard);
+
+    // Set up interval to check for new notifications
+    const interval = setInterval(() => {
+      if (storedUserEmail) {
+        loadUserNotifications(storedUserEmail);
+        loadCollaborationInvitations(storedUserEmail);
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(interval);
   }, []);
+
+  // Load user notifications
+  const loadUserNotifications = (email: string) => {
+    const allNotifications = JSON.parse(localStorage.getItem('notifications') || '[]') as Notification[];
+    const userNotifications = allNotifications.filter(notification => 
+      !notification.read && notification.data?.targetEmail === email
+    );
+    setNotifications(userNotifications);
+    setUnreadCount(userNotifications.length);
+  };
+
+  // Load collaboration invitations for user
+  const loadCollaborationInvitations = (email: string) => {
+    const allInvitations = JSON.parse(localStorage.getItem('collaborationInvitations') || '[]') as CollaborationInvitation[];
+    const userInvitations = allInvitations.filter(invitation => 
+      invitation.toUserEmail === email && invitation.status === 'pending'
+    );
+    setCollaborationInvitations(userInvitations);
+  };
+
+  // Mark notification as read
+  const markNotificationAsRead = (notificationId: string) => {
+    const allNotifications = JSON.parse(localStorage.getItem('notifications') || '[]') as Notification[];
+    const updatedNotifications = allNotifications.map(notification =>
+      notification.id === notificationId ? { ...notification, read: true } : notification
+    );
+    localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
+    loadUserNotifications(userEmail);
+  };
+
+  // Handle collaboration invitation response
+  const handleCollaborationResponse = (invitationId: string, accept: boolean) => {
+    const allInvitations = JSON.parse(localStorage.getItem('collaborationInvitations') || '[]') as CollaborationInvitation[];
+    const updatedInvitations = allInvitations.map(invitation =>
+      invitation.id === invitationId 
+        ? { ...invitation, status: accept ? 'accepted' : 'declined' }
+        : invitation
+    );
+    localStorage.setItem('collaborationInvitations', JSON.stringify(updatedInvitations));
+    
+    // Remove corresponding notification
+    const allNotifications = JSON.parse(localStorage.getItem('notifications') || '[]') as Notification[];
+    const notificationToUpdate = allNotifications.find(n => 
+      n.data?.invitationId === invitationId && n.data?.targetEmail === userEmail
+    );
+    
+    if (notificationToUpdate) {
+      markNotificationAsRead(notificationToUpdate.id);
+    }
+    
+    loadCollaborationInvitations(userEmail);
+    
+    if (accept) {
+      // Add user to board collaborators
+      const invitation = allInvitations.find(inv => inv.id === invitationId);
+      if (invitation) {
+        const boardData = localStorage.getItem(`board-${invitation.boardId}-data`);
+        if (boardData) {
+          const parsedData = JSON.parse(boardData);
+          const updatedData = {
+            ...parsedData,
+            collaborators: [...(parsedData.collaborators || []), userEmail]
+          };
+          localStorage.setItem(`board-${invitation.boardId}-data`, JSON.stringify(updatedData));
+        }
+        
+        // Redirect to the accepted board
+        router.push(`/canvas?board=${invitation.boardId}`);
+      }
+    }
+  };
+
+  // Function to simulate receiving a collaboration invitation (for testing)
+  const simulateCollaborationInvitation = () => {
+    if (!recentBoard) {
+      alert('Please create a board first to test collaboration invitations');
+      return;
+    }
+
+    const invitation: CollaborationInvitation = {
+      id: `invite-${Date.now()}`,
+      boardId: recentBoard.id,
+      boardName: recentBoard.name,
+      fromUser: 'Test User',
+      fromUserEmail: 'test@example.com',
+      toUserEmail: userEmail,
+      status: 'pending',
+      sentAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    };
+
+    // Save invitation
+    const allInvitations = JSON.parse(localStorage.getItem('collaborationInvitations') || '[]');
+    allInvitations.push(invitation);
+    localStorage.setItem('collaborationInvitations', JSON.stringify(allInvitations));
+
+    // Create notification
+    const notification: Notification = {
+      id: `notif-${Date.now()}`,
+      type: 'collaboration_invitation',
+      title: 'Collaboration Invitation',
+      message: `You've been invited to collaborate on "${invitation.boardName}"`,
+      read: false,
+      createdAt: new Date().toISOString(),
+      data: {
+        invitationId: invitation.id,
+        targetEmail: userEmail,
+        boardId: invitation.boardId
+      }
+    };
+
+    const allNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+    allNotifications.push(notification);
+    localStorage.setItem('notifications', JSON.stringify(allNotifications));
+
+    // Reload notifications and invitations
+    loadUserNotifications(userEmail);
+    loadCollaborationInvitations(userEmail);
+
+    alert('Test collaboration invitation sent! Check your notifications.');
+  };
 
   const handleLogout = () => {
     router.push('/login');
@@ -933,26 +1144,6 @@ export default function Dashboard() {
     }
   });
 
-  // Template descriptions with features
-  const getTemplateDescription = (templateId: string) => {
-    switch (templateId) {
-      case 'flowchart':
-        return 'Create process flows with nodes, decisions, and connectors. Perfect for workflow mapping and process documentation.';
-      case 'mindmap':
-        return 'Visualize ideas hierarchically with central topics and branching subtopics. Great for brainstorming and knowledge organization.';
-      case 'kanban':
-        return 'Manage tasks across customizable columns. Track progress with drag-and-drop cards and assign team members.';
-      case 'retrospective':
-        return 'Facilitate team retrospectives with structured sections for feedback, voting, and action items.';
-      case 'brainwriting':
-        return 'Collaborative idea generation with timed rounds. Build upon others\' ideas for creative solutions.';
-      case 'miroverse':
-        return 'Access community-created templates. Rate, comment, and fork popular templates from the Miro community.';
-      default:
-        return 'Start with a clean canvas and unlimited possibilities.';
-    }
-  };
-
   // If no board available, show the enhanced empty state
   if (!recentBoard) {
     return (
@@ -991,10 +1182,111 @@ export default function Dashboard() {
               <Button variant="ghost" size="sm" className="p-2 hover:bg-gray-100">
                 <Gift className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="p-2 hover:bg-gray-100 relative">
-                <Bell className="w-4 h-4" />
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></div>
-              </Button>
+              
+              {/* Notification Bell */}
+              <div className="relative">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="p-2 hover:bg-gray-100 relative"
+                  onClick={() => setNotificationDropdownOpen(!notificationDropdownOpen)}
+                >
+                  <Bell className="w-4 h-4" />
+                  {unreadCount > 0 && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center">
+                      <span className="text-white text-xs">{unreadCount}</span>
+                    </div>
+                  )}
+                </Button>
+                
+                {notificationDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                    <div className="p-4 border-b border-gray-200">
+                      <h3 className="font-semibold text-gray-900">Notifications</h3>
+                    </div>
+                    
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.length === 0 && collaborationInvitations.length === 0 ? (
+                        <div className="p-4 text-center text-gray-500">
+                          No new notifications
+                        </div>
+                      ) : (
+                        <>
+                          {/* Collaboration Invitations */}
+                          {collaborationInvitations.map(invitation => (
+                            <div key={invitation.id} className="p-4 border-b border-gray-100 hover:bg-gray-50">
+                              <div className="flex items-start space-x-3">
+                                <UserPlus className="w-5 h-5 text-blue-500 mt-0.5" />
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium text-gray-900">
+                                    Collaboration Invitation
+                                  </p>
+                                  <p className="text-xs text-gray-600 mt-1">
+                                    You've been invited to collaborate on <strong>"{invitation.boardName}"</strong> by {invitation.fromUser}
+                                  </p>
+                                  <div className="flex space-x-2 mt-2">
+                                    <Button
+                                      size="sm"
+                                      className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                      onClick={() => handleCollaborationResponse(invitation.id, true)}
+                                    >
+                                      Accept
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
+                                      onClick={() => handleCollaborationResponse(invitation.id, false)}
+                                    >
+                                      Decline
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                          
+                          {/* Other Notifications */}
+                          {notifications.map(notification => (
+                            <div 
+                              key={notification.id} 
+                              className="p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                              onClick={() => markNotificationAsRead(notification.id)}
+                            >
+                              <div className="flex items-start space-x-3">
+                                {notification.type === 'collaboration_invitation' ? (
+                                  <UserPlus className="w-5 h-5 text-blue-500 mt-0.5" />
+                                ) : (
+                                  <Bell className="w-5 h-5 text-gray-500 mt-0.5" />
+                                )}
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {notification.title}
+                                  </p>
+                                  <p className="text-xs text-gray-600 mt-1">
+                                    {notification.message}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                    
+                    <div className="p-2 border-t border-gray-200">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="w-full text-xs text-gray-600 hover:text-gray-900"
+                        onClick={simulateCollaborationInvitation}
+                      >
+                        Test Collaboration Invitation
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* User Avatar */}
               <div className="relative">
@@ -1209,10 +1501,111 @@ export default function Dashboard() {
             <Button variant="ghost" size="sm" className="p-2 hover:bg-gray-100">
               <Gift className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="p-2 hover:bg-gray-100 relative">
-              <Bell className="w-4 h-4" />
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></div>
-            </Button>
+            
+            {/* Notification Bell with Dropdown */}
+            <div className="relative">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="p-2 hover:bg-gray-100 relative"
+                onClick={() => setNotificationDropdownOpen(!notificationDropdownOpen)}
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center">
+                    <span className="text-white text-xs">{unreadCount}</span>
+                  </div>
+                )}
+              </Button>
+              
+              {notificationDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                  <div className="p-4 border-b border-gray-200">
+                    <h3 className="font-semibold text-gray-900">Notifications</h3>
+                  </div>
+                  
+                  <div className="max-h-96 overflow-y-auto">
+                    {notifications.length === 0 && collaborationInvitations.length === 0 ? (
+                      <div className="p-4 text-center text-gray-500">
+                        No new notifications
+                      </div>
+                    ) : (
+                      <>
+                        {/* Collaboration Invitations */}
+                        {collaborationInvitations.map(invitation => (
+                          <div key={invitation.id} className="p-4 border-b border-gray-100 hover:bg-gray-50">
+                            <div className="flex items-start space-x-3">
+                              <UserPlus className="w-5 h-5 text-blue-500 mt-0.5" />
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-gray-900">
+                                  Collaboration Invitation
+                                </p>
+                                <p className="text-xs text-gray-600 mt-1">
+                                  You've been invited to collaborate on <strong>"{invitation.boardName}"</strong> by {invitation.fromUser}
+                                </p>
+                                <div className="flex space-x-2 mt-2">
+                                  <Button
+                                    size="sm"
+                                    className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                    onClick={() => handleCollaborationResponse(invitation.id, true)}
+                                  >
+                                    Accept
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
+                                    onClick={() => handleCollaborationResponse(invitation.id, false)}
+                                  >
+                                    Decline
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {/* Other Notifications */}
+                        {notifications.map(notification => (
+                          <div 
+                            key={notification.id} 
+                            className="p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                            onClick={() => markNotificationAsRead(notification.id)}
+                          >
+                            <div className="flex items-start space-x-3">
+                              {notification.type === 'collaboration_invitation' ? (
+                                <UserPlus className="w-5 h-5 text-blue-500 mt-0.5" />
+                              ) : (
+                                <Bell className="w-5 h-5 text-gray-500 mt-0.5" />
+                              )}
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-gray-900">
+                                  {notification.title}
+                                </p>
+                                <p className="text-xs text-gray-600 mt-1">
+                                  {notification.message}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                  
+                  <div className="p-2 border-t border-gray-200">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full text-xs text-gray-600 hover:text-gray-900"
+                      onClick={simulateCollaborationInvitation}
+                    >
+                      Test Collaboration Invitation
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* User Avatar */}
             <div className="relative">
@@ -1230,7 +1623,7 @@ export default function Dashboard() {
                     <li className="px-4 py-2 hover:bg-gray-50 flex items-center space-x-2 cursor-pointer">
                       <User className="w-4 h-4" />
                       <span>Profile</span>
-                      </li>
+                    </li>
                     <li className="px-4 py-2 hover:bg-gray-50 cursor-pointer">Admin Console</li>
                     <li className="px-4 py-2 hover:bg-gray-50 cursor-pointer">Trash</li>
                     <li className="px-4 py-2 hover:bg-gray-50 cursor-pointer">Learning Center</li>
@@ -1654,3 +2047,6 @@ export default function Dashboard() {
     </div>
   );
 }
+
+// Export the collaboration function for use in canvas
+export { sendCollaborationInvitation };

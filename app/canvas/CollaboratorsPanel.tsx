@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { Users, Copy, Globe, UserPlus, Send } from 'lucide-react';
+import { Users, Copy, Globe, UserPlus } from 'lucide-react';
 
 export interface Collaborator {
   id: string;
@@ -55,7 +55,7 @@ function InviteEmailBar({ onAdd }: { onAdd: (email: string) => void }) {
     <div className="flex items-center gap-2">
       <Input
         type="email"
-        placeholder="Enter Gmail or Microsoft ID"
+        placeholder="Enter email address"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         className="flex-1"
@@ -89,7 +89,6 @@ export default function CollaboratorsPanel({
   const [accessLevel, setAccessLevel] = useState(ACCESS_OPTIONS[0].value);
   const [invitedEmails, setInvitedEmails] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [showSendButton, setShowSendButton] = useState(false);
 
   const filteredCollaborators = owner
     ? collaborators.filter((c) => c.id !== owner.id)
@@ -109,43 +108,50 @@ export default function CollaboratorsPanel({
     setInvitedEmails((prev) => prev.filter((email) => email !== emailToRemove));
   };
 
-  // Bulk collaboration function sending invitation links to all emails
+  // Direct collaboration function - grants direct access
   const handleStartCollaboration = async () => {
     if (invitedEmails.length === 0) return;
+
+    // Filter out logged-in user's email to avoid redundant processing
+    const filteredEmails = invitedEmails.filter(email => email !== userEmail);
 
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/canvas/save/invitation/accepts',{
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          emails: invitedEmails,
-          canvasId: boardId,
-          boardTitle: boardTitle,
-          canvasData: canvasData,
-          accessLevel: accessLevel,
-        }),
-      });
+      if (filteredEmails.length > 0) {
+        const response = await fetch('/api/canvas/collaborators/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            emails: filteredEmails,
+            canvasId: boardId,
+            boardTitle,
+            canvasData,
+            accessLevel,
+          }),
+        });
 
-      const result = await response.json();
+        const result = await response.json();
 
-      if (!response.ok) {
-        console.error('Error starting collaboration:', result.error);
-        throw new Error(result.error || 'Failed to start collaboration');
+        if (!response.ok) {
+          console.error('Error starting collaboration:', result.error);
+          throw new Error(result.error || 'Failed to start collaboration');
+        }
+
+        if (result.failed?.length > 0) {
+          alert(`Collaboration partially started. ${result.successful.length} users granted access, ${result.failed.length} failed.`);
+        } else {
+          alert('Collaboration started successfully! Users have been granted direct access.');
+        }
       }
 
-      console.log('Collaboration started successfully:', result);
-
-      if (result.failed && result.failed.length > 0) {
-        alert(`Collaboration partially started. ${result.successful.length} successful, ${result.failed.length} failed.`);
-      } else {
-        alert('Collaboration started successfully! Invitations sent to all users.');
+      // You may also update UI or state for the logged-in user access here if needed:
+      if (userEmail) {
+        console.log(`Access granted directly for logged-in user: ${userEmail}`);
       }
 
       setOpen(false);
       setInvitedEmails([]);
-      setShowSendButton(false);
     } catch (error) {
       console.error('Request failed:', error);
       alert(`Error: ${error instanceof Error ? error.message : 'Something went wrong'}`);
@@ -186,10 +192,10 @@ export default function CollaboratorsPanel({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              Invite to Board
+              Add Collaborators
             </DialogTitle>
             <DialogDescription className="mb-4">
-              Enter emails or invite from Slack, Google, or Microsoft
+              Enter email addresses to grant direct access
             </DialogDescription>
           </DialogHeader>
 
@@ -197,14 +203,14 @@ export default function CollaboratorsPanel({
             {/* Invite Email Bar */}
             <div>
               <Label htmlFor="invite-emails" className="mb-2">
-                Invite people
+                Add people by email
               </Label>
               <InviteEmailBar onAdd={handleAddEmail} />
 
-              {/* Show invited emails without individual accept button */}
+              {/* Show added emails */}
               {invitedEmails.length > 0 && (
                 <div className="mt-2 space-y-2">
-                  <Label className="text-xs text-gray-500">Pending invitations:</Label>
+                  <Label className="text-xs text-gray-500">Users to be added:</Label>
                   <div className="space-y-2">
                     {invitedEmails.map((email, index) => (
                       <div key={index} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg">
@@ -231,14 +237,14 @@ export default function CollaboratorsPanel({
               <div className="flex items-center space-x-2">
                 <Input
                   readOnly
-                  value={`https://your-app.com/invite/${boardId}`}
+                  value={`https://your-app.com/board/${boardId}`}
                   className="flex-1 text-xs"
                 />
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    navigator.clipboard.writeText(`https://your-app.com/invite/${boardId}`);
+                    navigator.clipboard.writeText(`https://your-app.com/board/${boardId}`);
                   }}
                 >
                   <Copy className="w-4 h-4" />
@@ -302,7 +308,7 @@ export default function CollaboratorsPanel({
               {filteredCollaborators.length === 0 && invitedEmails.length === 0 && (
                 <div className="text-center py-4 text-sm text-gray-500">
                   <Users className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                  <div>You haven&apos;t invited anyone to your team yet</div>
+                  <div>You haven&apos;t added anyone to your board yet</div>
                 </div>
               )}
 
@@ -345,44 +351,35 @@ export default function CollaboratorsPanel({
               onClick={() => {
                 setOpen(false);
                 setInvitedEmails([]);
-                setShowSendButton(false);
               }}
               disabled={isLoading}
             >
               Cancel
             </Button>
 
-            {!showSendButton ? (
-              <Button
-                onClick={() => setShowSendButton(true)}
-                disabled={invitedEmails.length === 0}
-                className="bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                <Users className="w-4 h-4 mr-2" />
-                Start Collaboration
-              </Button>
-            ) : (
-              <Button
-                onClick={handleStartCollaboration}
-                disabled={isLoading || invitedEmails.length === 0}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Sending All...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4 mr-2" />
-                    Send All Invitations ({invitedEmails.length})
-                  </>
-                )}
-              </Button>
-            )}
+            <Button
+              onClick={handleStartCollaboration}
+              disabled={isLoading || invitedEmails.length === 0}
+              className="bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <>
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <Users className="w-4 h-4 mr-2" />
+                  Start Collaboration
+                </>
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+
+
+

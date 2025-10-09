@@ -317,52 +317,7 @@ function UserCheckModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      {/* <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">Check User</h2>
-          <button
-            onClick={handleClose}
-            className="p-1 hover:bg-gray-100 rounded"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="email" className="block text-sm font-medium mb-2">
-            Enter email to check user:
-          </label>
-          <Input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="w-full mb-4"
-            placeholder="user@example.com"
-          />
-          
-          <Button 
-            type="submit" 
-            disabled={loading}
-            className="w-full"
-          >
-            {loading ? 'Checking...' : 'Check User'}
-          </Button>
-
-          {error && (
-            <p className="text-red-600 mt-4 p-2 bg-red-50 rounded">Error: {error}</p>
-          )}
-
-          {result && (
-            <div className="mt-4 p-3 bg-green-50 rounded">
-              <p className="font-semibold text-green-800">User found:</p>
-              <p className="text-sm">ID: {result.id}</p>
-              <p className="text-sm">Email: {result.email}</p>
-            </div>
-          )}
-        </form>
-      </div> */}
+     
     </div>
   );
 }
