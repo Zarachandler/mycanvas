@@ -857,19 +857,12 @@ export default function Dashboard() {
     router.push(`/canvas?board=${newBoardId}`);
   };
 
+  // UPDATED: Handle board click - REMOVED ACCESS CHECK
   const handleBoardClick = (boardId?: string) => {
     const boardToOpen = boardId ? boards.find(b => b.id === boardId) : recentBoard;
     if (!boardToOpen) return;
     
-    // Check if user has access to this board
-    if (!collaborationService.hasBoardAccess(boardToOpen.id, userEmail) && boardToOpen.owner !== userInitials) {
-      toast({
-        title: "Access Denied",
-        description: "You don't have permission to access this board.",
-        variant: "destructive"
-      });
-      return;
-    }
+    // REMOVED ACCESS CHECK - Allow anyone to open any board from dashboard
     
     // Update last opened time
     const updatedBoard = {
@@ -1013,8 +1006,8 @@ export default function Dashboard() {
                       Collaboration Invitation
                     </p>
                     <p className="text-xs text-gray-600 mt-1">
-  You&apos;ve been invited to collaborate on <strong>&quot;{invitation.boardName}&quot;</strong> by {invitation.fromUser}
-                 </p>
+                      You&apos;ve been invited to collaborate on <strong>&quot;{invitation.boardName}&quot;</strong> by {invitation.fromUser}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">
                       Expires: {new Date(invitation.expiresAt).toLocaleDateString()}
                     </p>
