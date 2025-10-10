@@ -1687,19 +1687,17 @@ import {
   Edit3,
   Check,
   X,
-  ArrowRight,
   Workflow,
   Brain,
   LayoutGrid, 
   RefreshCw,
   Lightbulb,
   Shapes,
-  Mail,
   UserPlus
 } from 'lucide-react';
 import Link from 'next/link'; 
-import { sendCollaborationInvitation, CollaborationInvitation, Notification } from './collaboration';
-
+import { useToast } from '@/hooks/use-toast';
+import { CollaborationInvitation, collaborationService, Notification } from './collaboration';
 
 // ---------- TYPES ----------
 type BoardMetadata = {
@@ -2201,85 +2199,6 @@ const getTemplateTools = (templateId: string) => {
   }
 };
 
-const handleTemplateSpecificAction = (templateId: string, action: string, data: any) => {
-  switch (templateId) {
-    case 'flowchart':
-      switch (action) {
-        case 'addNode':
-          return { type: 'ADD_NODE', data };
-        case 'connectNodes':
-          return { type: 'CONNECT_NODES', data };
-        case 'autoLayout':
-          return { type: 'AUTO_LAYOUT', data };
-        default:
-          return null;
-      }
-
-    case 'mindmap':
-      switch (action) {
-        case 'addBranch':
-          return { type: 'ADD_BRANCH', data };
-        case 'collapseBranch':
-          return { type: 'COLLAPSE_BRANCH', data };
-        case 'changeLayout':
-          return { type: 'CHANGE_LAYOUT', data };
-        default:
-          return null;
-      }
-
-    case 'kanban':
-      switch (action) {
-        case 'moveCard':
-          return { type: 'MOVE_CARD', data };
-        case 'addCard':
-          return { type: 'ADD_CARD', data };
-        case 'assignUser':
-          return { type: 'ASSIGN_USER', data };
-        default:
-          return null;
-      }
-
-    case 'retrospective':
-      switch (action) {
-        case 'addItem':
-          return { type: 'ADD_ITEM', data };
-        case 'voteItem':
-          return { type: 'VOTE_ITEM', data };
-        case 'createAction':
-          return { type: 'CREATE_ACTION', data };
-        default:
-          return null;
-      }
-
-    case 'brainwriting':
-      switch (action) {
-        case 'submitIdea':
-          return { type: 'SUBMIT_IDEA', data };
-        case 'developIdea':
-          return { type: 'DEVELOP_IDEA', data };
-        case 'nextRound':
-          return { type: 'NEXT_ROUND', data };
-        default:
-          return null;
-      }
-
-    case 'miroverse':
-      switch (action) {
-        case 'rateTemplate':
-          return { type: 'RATE_TEMPLATE', data };
-        case 'addComment':
-          return { type: 'ADD_COMMENT', data };
-        case 'forkTemplate':
-          return { type: 'FORK_TEMPLATE', data };
-        default:
-          return null;
-      }
-
-    default:
-      return null;
-  }
-};
-
 const templates: TemplateType[] = [
   {
     id: 'blank',
@@ -2339,11 +2258,13 @@ const templates: TemplateType[] = [
 
 export default function Dashboard() {
   const router = useRouter();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
   const [userInitials, setUserInitials] = useState('NA');
   const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
   const [recentBoard, setRecentBoard] = useState<BoardMetadata | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [boards, setBoards] = useState<BoardMetadata[]>([]);
@@ -2366,9 +2287,12 @@ export default function Dashboard() {
   useEffect(() => {
     // Get user email from localStorage
     const storedUserEmail = localStorage.getItem('userEmail');
+    const storedUserName = localStorage.getItem('userName') || 'User';
+    
     if (storedUserEmail) {
       setUserEmail(storedUserEmail);
-      const initials = storedUserEmail.split('@')[0].slice(0, 2).toUpperCase();
+      setUserName(storedUserName);
+      const initials = storedUserName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
       setUserInitials(initials);
       
       // Load notifications and collaboration invitations for this user
@@ -2396,75 +2320,44 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // Load user notifications
+  // Load user notifications using collaborationService
   const loadUserNotifications = (email: string) => {
-    const allNotifications = JSON.parse(localStorage.getItem('notifications') || '[]') as Notification[];
-    const userNotifications = allNotifications.filter(notification => 
-      !notification.read && notification.data?.targetEmail === email
-    );
+    const userNotifications = collaborationService.getUserNotifications(email);
     setNotifications(userNotifications);
     setUnreadCount(userNotifications.length);
   };
 
-  // Load collaboration invitations for user
+  // Load collaboration invitations for user using collaborationService
   const loadCollaborationInvitations = (email: string) => {
-    const allInvitations = JSON.parse(localStorage.getItem('collaborationInvitations') || '[]') as CollaborationInvitation[];
-    const userInvitations = allInvitations.filter(invitation => 
-      invitation.toUserEmail === email && invitation.status === 'pending'
-    );
+    const userInvitations = collaborationService.getUserCollaborationInvitations(email);
     setCollaborationInvitations(userInvitations);
-  };
-
-  // Mark notification as read
-  const markNotificationAsRead = (notificationId: string) => {
-    const allNotifications = JSON.parse(localStorage.getItem('notifications') || '[]') as Notification[];
-    const updatedNotifications = allNotifications.map(notification =>
-      notification.id === notificationId ? { ...notification, read: true } : notification
-    );
-    localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
-    loadUserNotifications(userEmail);
   };
 
   // Handle collaboration invitation response
   const handleCollaborationResponse = (invitationId: string, accept: boolean) => {
-    const allInvitations = JSON.parse(localStorage.getItem('collaborationInvitations') || '[]') as CollaborationInvitation[];
-    const updatedInvitations = allInvitations.map(invitation =>
-      invitation.id === invitationId 
-        ? { ...invitation, status: accept ? 'accepted' : 'declined' }
-        : invitation
-    );
-    localStorage.setItem('collaborationInvitations', JSON.stringify(updatedInvitations));
+    const success = collaborationService.updateInvitationStatus(invitationId, accept ? 'accepted' : 'declined');
     
-    // Remove corresponding notification
-    const allNotifications = JSON.parse(localStorage.getItem('notifications') || '[]') as Notification[];
-    const notificationToUpdate = allNotifications.find(n => 
-      n.data?.invitationId === invitationId && n.data?.targetEmail === userEmail
-    );
-    
-    if (notificationToUpdate) {
-      markNotificationAsRead(notificationToUpdate.id);
-    }
-    
-    loadCollaborationInvitations(userEmail);
-    
-    if (accept) {
-      // Add user to board collaborators
-      const invitation = allInvitations.find(inv => inv.id === invitationId);
+    if (success && accept) {
+      // Find the invitation
+      const invitation = collaborationInvitations.find(inv => inv.id === invitationId);
       if (invitation) {
-        const boardData = localStorage.getItem(`board-${invitation.boardId}-data`);
-        if (boardData) {
-          const parsedData = JSON.parse(boardData);
-          const updatedData = {
-            ...parsedData,
-            collaborators: [...(parsedData.collaborators || []), userEmail]
-          };
-          localStorage.setItem(`board-${invitation.boardId}-data`, JSON.stringify(updatedData));
-        }
+        // Add user to board collaborators
+        collaborationService.addCollaboratorToBoard(invitation.boardId, userEmail);
         
         // Redirect to the accepted board
         router.push(`/canvas?board=${invitation.boardId}`);
       }
     }
+    
+    // Reload invitations and notifications
+    loadCollaborationInvitations(userEmail);
+    loadUserNotifications(userEmail);
+  };
+
+  // Mark notification as read
+  const markNotificationAsRead = (notificationId: string) => {
+    collaborationService.markNotificationAsRead(notificationId);
+    loadUserNotifications(userEmail);
   };
 
   // Function to simulate receiving a collaboration invitation (for testing)
@@ -2486,12 +2379,12 @@ export default function Dashboard() {
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     };
 
-    // Save invitation
-    const allInvitations = JSON.parse(localStorage.getItem('collaborationInvitations') || '[]');
+    // Save invitation using collaborationService - fixed method name
+    const allInvitations = collaborationService.getCollaborationInvitations();
     allInvitations.push(invitation);
     localStorage.setItem('collaborationInvitations', JSON.stringify(allInvitations));
 
-    // Create notification
+    // Create notification - fixed method name
     const notification: Notification = {
       id: `notif-${Date.now()}`,
       type: 'collaboration_invitation',
@@ -2506,7 +2399,7 @@ export default function Dashboard() {
       }
     };
 
-    const allNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+    const allNotifications = collaborationService.getNotifications();
     allNotifications.push(notification);
     localStorage.setItem('notifications', JSON.stringify(allNotifications));
 
@@ -2514,7 +2407,10 @@ export default function Dashboard() {
     loadUserNotifications(userEmail);
     loadCollaborationInvitations(userEmail);
 
-    alert('Test collaboration invitation sent! Check your notifications.');
+    toast({
+      title: "Test Invitation Sent",
+      description: "Check your notifications for the test collaboration invitation."
+    });
   };
 
   const handleLogout = () => {
@@ -3248,7 +3144,7 @@ export default function Dashboard() {
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-md">
                     <span className="text-white text-sm font-bold">DM</span>
-                  </div>
+                    </div>
                   <div>
                     <div className="font-semibold text-gray-900">dashboard marketing</div>
                     <div className="text-sm text-gray-600">5 members</div>
