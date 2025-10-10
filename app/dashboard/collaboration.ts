@@ -1,5 +1,4 @@
-// lib/collaborationService.ts
-
+// collaboration.ts
 export interface CollaborationInvitation {
   id: string;
   boardId: string;
@@ -10,344 +9,272 @@ export interface CollaborationInvitation {
   status: 'pending' | 'accepted' | 'declined';
   sentAt: string;
   expiresAt: string;
+  boardData?: string;
+  accessLevel: 'view' | 'edit';
 }
 
 export interface Notification {
   id: string;
-  type: 'collaboration_invitation' | 'system' | 'info' | 'board_update' | 'mention';
+  type: 'collaboration_invitation' | 'board_access_granted' | 'general';
   title: string;
   message: string;
   read: boolean;
   createdAt: string;
-  data?: {
+  data: {
     invitationId?: string;
     targetEmail?: string;
     boardId?: string;
     boardName?: string;
     fromUser?: string;
-    fromUserEmail?: string;
   };
 }
 
+export interface BoardCollaborator {
+  boardId: string;
+  userEmail: string;
+  accessLevel: 'view' | 'edit';
+  addedAt: string;
+}
+
 class CollaborationService {
-  // Simulate sending email (in a real app, you'd use an email service)
-  private async sendEmailNotification(toEmail: string, subject: string, message: string) {
-    // In a real application, you would integrate with an email service like:
-    // - SendGrid, AWS SES, Resend, etc.
-    // For demo purposes, we'll simulate the email sending and log it
-    
-    console.log('📧 SENDING EMAIL NOTIFICATION:');
-    console.log('To:', toEmail);
-    console.log('Subject:', subject);
-    console.log('Message:', message);
-    console.log('---');
-    
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // In a real app, you would make an API call to your email service
-    // Example:
-    // const response = await fetch('/api/send-email', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ to: toEmail, subject, message })
-    // });
-    
-    return { success: true, message: 'Email sent successfully' };
-  }
-
-  // Send collaboration invitation with email notification
-  async sendCollaborationInvitation(
-    toEmail: string, 
-    boardId: string, 
-    boardName: string
-  ): Promise<{ success: boolean; message: string }> {
-    try {
-      const fromUser = localStorage.getItem('userEmail') || 'Unknown User';
-      const fromUserEmail = localStorage.getItem('userEmail') || 'unknown@example.com';
-      
-      const invitation: CollaborationInvitation = {
-        id: `invite-${Date.now()}`,
-        boardId,
-        boardName,
-        fromUser: fromUser.split('@')[0],
-        fromUserEmail,
-        toUserEmail: toEmail, // Fixed: assign toEmail to toUserEmail
-        status: 'pending',
-        sentAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
-      };
-
-      // Send email notification to the invited user
-      const emailSubject = `Collaboration Invitation: ${boardName}`;
-      const emailMessage = `
-Hello!
-
-You've been invited by ${fromUser.split('@')[0]} (${fromUserEmail}) to collaborate on the board "${boardName}".
-
-To accept this invitation and start collaborating:
-
-1. Log in to your MiroClone account
-2. Check your notifications (bell icon in top right)
-3. Click "Accept" on the collaboration invitation
-
-You can also access the board directly by clicking this link:
-${typeof window !== 'undefined' ? `${window.location.origin}/canvas?board=${boardId}&invitation=${invitation.id}` : `/canvas?board=${boardId}&invitation=${invitation.id}`}
-
-This invitation will expire in 7 days.
-
-Happy collaborating!
-The MiroClone Team
-      `;
-
-      try {
-        const emailResult = await this.sendEmailNotification(toEmail, emailSubject, emailMessage);
-        console.log('Email sent:', emailResult);
-      } catch (error) {
-        console.error('Failed to send email:', error);
-        // Continue even if email fails - the invitation will still be in the system
-      }
-
-      // Save invitation to localStorage
-      const existingInvitations = this.getCollaborationInvitations();
-      existingInvitations.push(invitation);
-      localStorage.setItem('collaborationInvitations', JSON.stringify(existingInvitations));
-
-      // Create notification for the invited user
-      const notification: Notification = {
-        id: `notif-${Date.now()}`,
-        type: 'collaboration_invitation',
-        title: 'Collaboration Invitation',
-        message: `You've been invited to collaborate on "${boardName}" by ${fromUser.split('@')[0]}`,
-        read: false,
-        createdAt: new Date().toISOString(),
-        data: {
-          invitationId: invitation.id,
-          targetEmail: toEmail,
-          boardId,
-          boardName,
-          fromUser: fromUser.split('@')[0],
-          fromUserEmail
-        }
-      };
-
-      const existingNotifications = this.getNotifications();
-      existingNotifications.push(notification);
-      localStorage.setItem('notifications', JSON.stringify(existingNotifications));
-
-      console.log(`Collaboration invitation sent to ${toEmail}`);
-      console.log(`Board: ${boardName}`);
-      console.log(`Invitation ID: ${invitation.id}`);
-
-      return {
-        success: true,
-        message: `Invitation sent to ${toEmail}`
-      };
-
-    } catch (error) {
-      console.error('Error sending collaboration invitation:', error);
-      return {
-        success: false,
-        message: 'Failed to send invitation'
-      };
-    }
-  }
-
-  // Alternative method with explicit user data
-  async sendCollaborationInvitationWithUser(
-    boardId: string,
-    boardName: string,
-    fromUser: string,
-    fromUserEmail: string,
-    toUserEmail: string // Fixed parameter name
-  ): Promise<{ success: boolean; message: string }> {
-    return this.sendCollaborationInvitation(toUserEmail, boardId, boardName);
-  }
-
   // Get all collaboration invitations
   getCollaborationInvitations(): CollaborationInvitation[] {
     if (typeof window === 'undefined') return [];
     return JSON.parse(localStorage.getItem('collaborationInvitations') || '[]');
   }
 
-  // Get pending collaboration invitations for a specific user
-  getPendingInvitations(userEmail: string): CollaborationInvitation[] {
+  // Get invitations for a specific user
+  getUserCollaborationInvitations(userEmail: string): CollaborationInvitation[] {
     const invitations = this.getCollaborationInvitations();
-    return invitations.filter(invitation => 
-      invitation.toUserEmail === userEmail && invitation.status === 'pending'
+    return invitations.filter(
+      invitation => 
+        invitation.toUserEmail === userEmail && 
+        invitation.status === 'pending' &&
+        new Date(invitation.expiresAt) > new Date()
     );
   }
 
-  // Get user collaboration invitations (alias for getPendingInvitations)
-  getUserCollaborationInvitations(userEmail: string): CollaborationInvitation[] {
-    return this.getPendingInvitations(userEmail);
+  // Create a new collaboration invitation
+  createCollaborationInvitation(
+    boardId: string,
+    boardName: string,
+    fromUser: string,
+    fromUserEmail: string,
+    toUserEmail: string,
+    accessLevel: 'view' | 'edit' = 'edit',
+    boardData?: any
+  ): string {
+    const invitation: CollaborationInvitation = {
+      id: `invite-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      boardId,
+      boardName,
+      fromUser,
+      fromUserEmail,
+      toUserEmail,
+      status: 'pending',
+      sentAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+      boardData: boardData ? JSON.stringify(boardData) : undefined,
+      accessLevel
+    };
+
+    const invitations = this.getCollaborationInvitations();
+    invitations.push(invitation);
+    localStorage.setItem('collaborationInvitations', JSON.stringify(invitations));
+
+    // Create notification for the invited user
+    this.createNotification({
+      id: `notif-${Date.now()}`,
+      type: 'collaboration_invitation',
+      title: 'Collaboration Invitation',
+      message: `You've been invited to collaborate on "${boardName}" by ${fromUser}`,
+      read: false,
+      createdAt: new Date().toISOString(),
+      data: {
+        invitationId: invitation.id,
+        targetEmail: toUserEmail,
+        boardId: boardId,
+        boardName: boardName,
+        fromUser: fromUser
+      }
+    });
+
+    return invitation.id;
   }
 
-  // Get all notifications
+  // Create multiple collaboration invitations
+  createBulkCollaborationInvitations(
+    boardId: string,
+    boardName: string,
+    fromUser: string,
+    fromUserEmail: string,
+    toUserEmails: string[],
+    accessLevel: 'view' | 'edit' = 'edit',
+    boardData?: any
+  ): string[] {
+    const invitationIds: string[] = [];
+    
+    toUserEmails.forEach(email => {
+      const invitationId = this.createCollaborationInvitation(
+        boardId,
+        boardName,
+        fromUser,
+        fromUserEmail,
+        email,
+        accessLevel,
+        boardData
+      );
+      invitationIds.push(invitationId);
+    });
+
+    return invitationIds;
+  }
+
+  // Update invitation status
+  updateInvitationStatus(invitationId: string, status: 'accepted' | 'declined'): boolean {
+    const invitations = this.getCollaborationInvitations();
+    const invitationIndex = invitations.findIndex(inv => inv.id === invitationId);
+    
+    if (invitationIndex === -1) return false;
+    
+    invitations[invitationIndex].status = status;
+    localStorage.setItem('collaborationInvitations', JSON.stringify(invitations));
+
+    // If accepted, add user to board collaborators and create access notification
+    if (status === 'accepted') {
+      const invitation = invitations[invitationIndex];
+      this.addCollaboratorToBoard(invitation.boardId, invitation.toUserEmail, invitation.accessLevel);
+      
+      // Create board access notification
+      this.createNotification({
+        id: `access-${Date.now()}`,
+        type: 'board_access_granted',
+        title: 'Board Access Granted',
+        message: `You now have access to "${invitation.boardName}"`,
+        read: false,
+        createdAt: new Date().toISOString(),
+        data: {
+          boardId: invitation.boardId,
+          boardName: invitation.boardName,
+          targetEmail: invitation.toUserEmail
+        }
+      });
+    }
+
+    return true;
+  }
+
+  // Add collaborator to board
+  addCollaboratorToBoard(boardId: string, userEmail: string, accessLevel: 'view' | 'edit' = 'edit'): void {
+    const collaborators: BoardCollaborator[] = JSON.parse(
+      localStorage.getItem('boardCollaborators') || '[]'
+    );
+
+    // Remove existing entry if any
+    const filteredCollaborators = collaborators.filter(
+      collab => !(collab.boardId === boardId && collab.userEmail === userEmail)
+    );
+
+    filteredCollaborators.push({
+      boardId,
+      userEmail,
+      accessLevel,
+      addedAt: new Date().toISOString()
+    });
+
+    localStorage.setItem('boardCollaborators', JSON.stringify(filteredCollaborators));
+  }
+
+  // Get user's accessible boards
+  getUserAccessibleBoards(userEmail: string): string[] {
+    const collaborators: BoardCollaborator[] = JSON.parse(
+      localStorage.getItem('boardCollaborators') || '[]'
+    );
+    
+    return collaborators
+      .filter(collab => collab.userEmail === userEmail)
+      .map(collab => collab.boardId);
+  }
+
+  // Check if user has access to a board
+  hasBoardAccess(boardId: string, userEmail: string): boolean {
+    const collaborators: BoardCollaborator[] = JSON.parse(
+      localStorage.getItem('boardCollaborators') || '[]'
+    );
+    
+    return collaborators.some(
+      collab => collab.boardId === boardId && collab.userEmail === userEmail
+    );
+  }
+
+  // Get user's access level for a board
+  getUserAccessLevel(boardId: string, userEmail: string): 'view' | 'edit' | null {
+    const collaborators: BoardCollaborator[] = JSON.parse(
+      localStorage.getItem('boardCollaborators') || '[]'
+    );
+    
+    const collaborator = collaborators.find(
+      collab => collab.boardId === boardId && collab.userEmail === userEmail
+    );
+    
+    return collaborator ? collaborator.accessLevel : null;
+  }
+
+  // Notification methods
   getNotifications(): Notification[] {
     if (typeof window === 'undefined') return [];
     return JSON.parse(localStorage.getItem('notifications') || '[]');
   }
 
-  // Get user notifications
   getUserNotifications(userEmail: string): Notification[] {
     const notifications = this.getNotifications();
-    return notifications.filter(notification => 
-      !notification.read && notification.data?.targetEmail === userEmail
-    );
+    return notifications
+      .filter(notification => 
+        notification.data.targetEmail === userEmail
+      )
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
-  // Get unread notification count for a user
-  getUnreadNotificationCount(userEmail: string): number {
-    return this.getUserNotifications(userEmail).length;
+  createNotification(notification: Notification): void {
+    const notifications = this.getNotifications();
+    notifications.push(notification);
+    localStorage.setItem('notifications', JSON.stringify(notifications));
   }
 
-  // Update invitation status
-  updateInvitationStatus(invitationId: string, status: 'accepted' | 'declined'): boolean {
-    try {
-      const invitations = this.getCollaborationInvitations();
-      const updatedInvitations = invitations.map(invitation =>
-        invitation.id === invitationId ? { ...invitation, status } : invitation
-      );
-      localStorage.setItem('collaborationInvitations', JSON.stringify(updatedInvitations));
-      return true;
-    } catch (error) {
-      console.error('Error updating invitation status:', error);
-      return false;
-    }
-  }
-
-  // Mark notification as read
-  markNotificationAsRead(notificationId: string): boolean {
-    try {
-      const notifications = this.getNotifications();
-      const updatedNotifications = notifications.map(notification =>
-        notification.id === notificationId ? { ...notification, read: true } : notification
-      );
-      localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
-      return true;
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-      return false;
-    }
-  }
-
-  // Add collaborator to board
-  addCollaboratorToBoard(boardId: string, userEmail: string): boolean {
-    try {
-      const boardData = localStorage.getItem(`board-${boardId}-data`);
-      if (boardData) {
-        const parsedData = JSON.parse(boardData);
-        const updatedData = {
-          ...parsedData,
-          collaborators: [...(parsedData.collaborators || []), userEmail]
-        };
-        localStorage.setItem(`board-${boardId}-data`, JSON.stringify(updatedData));
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Error adding collaborator to board:', error);
-      return false;
-    }
-  }
-
-  // Handle collaboration invitation response
-  handleCollaborationResponse(
-    invitationId: string, 
-    accept: boolean, 
-    userEmail: string
-  ): { success: boolean; redirectUrl?: string } {
-    const success = this.updateInvitationStatus(invitationId, accept ? 'accepted' : 'declined');
+  markNotificationAsRead(notificationId: string): void {
+    const notifications = this.getNotifications();
+    const notificationIndex = notifications.findIndex(notif => notif.id === notificationId);
     
-    if (success && accept) {
-      // Find the invitation
-      const invitations = this.getCollaborationInvitations();
-      const invitation = invitations.find(inv => inv.id === invitationId);
-      
-      if (invitation) {
-        // Add user to board collaborators
-        this.addCollaboratorToBoard(invitation.boardId, userEmail);
-        
-        // Return redirect URL
-        return {
-          success: true,
-          redirectUrl: `/canvas?board=${invitation.boardId}&invitation=${invitationId}`
-        };
-      }
+    if (notificationIndex !== -1) {
+      notifications[notificationIndex].read = true;
+      localStorage.setItem('notifications', JSON.stringify(notifications));
     }
-    
-    return { success };
   }
 
-  // Get invitation by ID
-  getInvitationById(invitationId: string): CollaborationInvitation | null {
+  markAllNotificationsAsRead(userEmail: string): void {
+    const notifications = this.getNotifications();
+    const updatedNotifications = notifications.map(notification => {
+      if (notification.data.targetEmail === userEmail) {
+        return { ...notification, read: true };
+      }
+      return notification;
+    });
+    
+    localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
+  }
+
+  getUnreadCount(userEmail: string): number {
+    const notifications = this.getUserNotifications(userEmail);
+    return notifications.filter(notification => !notification.read).length;
+  }
+
+  // Remove expired invitations
+  cleanupExpiredInvitations(): void {
     const invitations = this.getCollaborationInvitations();
-    return invitations.find(inv => inv.id === invitationId) || null;
-  }
-
-  // Check if user has access to board (owner or collaborator)
-  hasBoardAccess(boardId: string, userEmail: string): boolean {
-    // Check if user is owner
-    const boards = JSON.parse(localStorage.getItem('recentBoards') || '[]');
-    const isOwner = boards.some((board: any) => 
-      board.id === boardId && board.owner === userEmail
-    );
-    
-    if (isOwner) return true;
-
-    // Check if user is collaborator
-    const boardData = localStorage.getItem(`board-${boardId}-data`);
-    if (boardData) {
-      const parsedData = JSON.parse(boardData);
-      const collaborators = parsedData.collaborators || [];
-      return collaborators.includes(userEmail);
-    }
-
-    return false;
-  }
-
-  // Remove collaborator from board
-  removeCollaboratorFromBoard(boardId: string, userEmail: string): boolean {
-    try {
-      const boardData = localStorage.getItem(`board-${boardId}-data`);
-      if (boardData) {
-        const parsedData = JSON.parse(boardData);
-        const updatedData = {
-          ...parsedData,
-          collaborators: (parsedData.collaborators || []).filter((email: string) => email !== userEmail)
-        };
-        localStorage.setItem(`board-${boardId}-data`, JSON.stringify(updatedData));
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Error removing collaborator from board:', error);
-      return false;
-    }
-  }
-
-  // Get board collaborators
-  getBoardCollaborators(boardId: string): string[] {
-    try {
-      const boardData = localStorage.getItem(`board-${boardId}-data`);
-      if (boardData) {
-        const parsedData = JSON.parse(boardData);
-        return parsedData.collaborators || [];
-      }
-      return [];
-    } catch (error) {
-      console.error('Error getting board collaborators:', error);
-      return [];
-    }
+    const now = new Date();
+    const validInvitations = invitations.filter(inv => new Date(inv.expiresAt) > now);
+    localStorage.setItem('collaborationInvitations', JSON.stringify(validInvitations));
   }
 }
 
 export const collaborationService = new CollaborationService();
-
-// Export individual functions for backward compatibility
-export const sendCollaborationInvitation = collaborationService.sendCollaborationInvitation.bind(collaborationService);
-export const getPendingInvitations = collaborationService.getPendingInvitations.bind(collaborationService);
-export const getUnreadNotificationCount = collaborationService.getUnreadNotificationCount.bind(collaborationService);
-export const markNotificationAsRead = collaborationService.markNotificationAsRead.bind(collaborationService);
-export const updateInvitationStatus = collaborationService.updateInvitationStatus.bind(collaborationService);
