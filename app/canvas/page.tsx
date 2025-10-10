@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import ZoomableGrid from "../board/ZoomableGrid";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from '@supabase/supabase-js';
-import CollaboratorsPanel, { Collaborator } from "./CollaboratorsPanel";
+import  { Collaborator } from "./CollaboratorsPanel";
 import {
   StickyNote,
   MousePointer2,
@@ -42,7 +42,6 @@ import {
   User,
   X,
 } from "lucide-react";
-import { collaborationService } from '../dashboard/collaboration';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -91,6 +90,7 @@ type BoardMetadata = {
 // ---------- USER DROPDOWN COMPONENT ----------
 function UserDropdown({ email }: { email: string | null }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [collaborationOpen, setCollaborationOpen] = useState(false);
 
   const handleOpen = (event: React.MouseEvent<HTMLButtonElement>) => setAnchorEl(event.currentTarget);
   const handleClose = () => setAnchorEl(null);
@@ -98,6 +98,11 @@ function UserDropdown({ email }: { email: string | null }) {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     window.location.href = "/login";
+  };
+
+  const startCollaboration = () => {
+    setCollaborationOpen(true);
+    setAnchorEl(null);
   };
 
   return (
@@ -122,6 +127,13 @@ function UserDropdown({ email }: { email: string | null }) {
             </button>
 
             <button
+              className="w-full text-left px-4 py-2 text-sm text-yellow-600 hover:bg-gray-100 cursor-pointer"
+              onClick={startCollaboration}
+            >
+              Start Share the Collaboration
+            </button>
+
+            <button
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
               onClick={handleLogout}
             >
@@ -130,172 +142,57 @@ function UserDropdown({ email }: { email: string | null }) {
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-// ---------- COLLABORATION MODAL COMPONENT ----------
-function CollaborationModal({ 
-  isOpen, 
-  onClose, 
-  boardId, 
-  boardName,
-  userEmail,
-  userName 
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  boardId: string;
-  boardName: string;
-  userEmail: string;
-  userName: string;
-}) {
-  const { toast } = useToast();
-  const [collaboratorEmail, setCollaboratorEmail] = useState('');
-  const [collaboratorEmails, setCollaboratorEmails] = useState<string[]>([]);
-  const [accessLevel, setAccessLevel] = useState<'view' | 'edit'>('edit');
-  const [sending, setSending] = useState(false);
-
-  const handleAddEmail = () => {
-    if (collaboratorEmail && isValidEmail(collaboratorEmail)) {
-      if (!collaboratorEmails.includes(collaboratorEmail)) {
-        setCollaboratorEmails(prev => [...prev, collaboratorEmail]);
-        setCollaboratorEmail('');
-      }
-    }
-  };
-
-  const removeEmail = (emailToRemove: string) => {
-    setCollaboratorEmails(prev => prev.filter(email => email !== emailToRemove));
-  };
-
-  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-  const handleSendInvitations = async () => {
-    if (collaboratorEmails.length === 0) return;
-
-    setSending(true);
-    try {
-      // Get current board data
-      const boardData = localStorage.getItem(`board-${boardId}-data`);
-      
-      // Create collaboration invitations for each email
-      const invitationIds = collaborationService.createBulkCollaborationInvitations(
-        boardId,
-        boardName,
-        userName,
-        userEmail,
-        collaboratorEmails,
-        accessLevel,
-        boardData ? JSON.parse(boardData) : null
-      );
-
-      toast({
-        title: "Invitations Sent",
-        description: `Collaboration invitations sent to ${collaboratorEmails.length} people.`
-      });
-
-      // Reset and close
-      setCollaboratorEmails([]);
-      setCollaboratorEmail('');
-      onClose();
-      
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to send invitations",
-        variant: "destructive"
-      });
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[480px] max-w-full rounded-lg p-6">
-        <DialogHeader>
-          <DialogTitle>Start Collaboration</DialogTitle>
-          <DialogDescription className="mb-4">
-            Invite people to collaborate on &quot;{boardName}&quot;
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="collab-emails" className="mb-2">Invite people by email</Label>
-            <div className="flex gap-2 mb-2">
+      {/* Collaboration Dialog */}
+      <Dialog open={collaborationOpen} onOpenChange={setCollaborationOpen}>
+        <DialogContent className="w-[480px] max-w-full rounded-lg p-6">
+          <DialogHeader>
+            <DialogTitle>Start Collaboration</DialogTitle>
+            <DialogDescription className="mb-4">
+              Invite people to collaborate on this project
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="collab-emails" className="mb-2">Invite people</Label>
               <Input
                 id="collab-emails"
-                type="email"
-                placeholder="Enter email address"
-                value={collaboratorEmail}
-                onChange={(e) => setCollaboratorEmail(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddEmail();
-                  }
-                }}
-                className="flex-1"
+                type="text"
+                placeholder="Enter email addresses"
+                className="mb-2"
               />
-              <Button 
-                onClick={handleAddEmail}
-                disabled={!isValidEmail(collaboratorEmail)}
-              >
-                Add
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Input
+                readOnly
+                value="https://your-app.com/collaboration-link"
+                className="flex-1 text-xs"
+              />
+              <Button size="sm" onClick={() => {
+                navigator.clipboard.writeText("https://your-app.com/collaboration-link");
+              }}>
+                Copy link
               </Button>
             </div>
-            
-            {/* Added emails list */}
-            {collaboratorEmails.length > 0 && (
-              <div className="space-y-2 max-h-32 overflow-y-auto">
-                {collaboratorEmails.map((email, index) => (
-                  <div key={index} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg border">
-                    <span className="text-sm flex-1 truncate">{email}</span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeEmail(email)}
-                      className="h-6 w-6 p-0 hover:bg-gray-200"
-                    >
-                      <X className="w-3 h-3" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
 
-          <div>
-            <Label htmlFor="access-level" className="mb-2">Access Level</Label>
-            <select 
-              id="access-level"
-              value={accessLevel}
-              onChange={(e) => setAccessLevel(e.target.value as 'view' | 'edit')}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value="edit">Can edit</option>
-              <option value="view">Can view</option>
-            </select>
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button variant="outline" onClick={() => setCollaborationOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => {
+                // Add your collaboration logic here
+                alert('Collaboration started!');
+                setCollaborationOpen(false);
+              }}>
+                Start Collaboration
+              </Button>
+            </div>
           </div>
-
-          <div className="flex justify-end space-x-2 pt-4">
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleSendInvitations}
-              disabled={collaboratorEmails.length === 0 || sending}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {sending ? 'Sending...' : `Send Invitations (${collaboratorEmails.length})`}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 
@@ -375,18 +272,67 @@ function MessageIconWithTextarea({
   );
 }
 
+// ---------- USER CHECK MODAL ----------
+function UserCheckModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const [email, setEmail] = useState('');
+  const [result, setResult] = useState<{ id: string; email: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const res = await fetch('/api/check-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Unknown error');
+      } else {
+        setResult(data);
+      }
+    } catch (err) {
+      setError('Request failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setEmail('');
+    setResult(null);
+    setError(null);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    
+    </div>
+  );
+}
+
 // ---------- MAIN PAGE COMPONENT ----------
 export default function Home() {
   const { toast } = useToast();
-  const [boardId, setBoardId] = useState("");
+  const [boardId, setBoardId] = useState(""); // user-set name/id
   const [boardName, setBoardName] = useState("");
   const [boardOwner, setBoardOwner] = useState("You");
   const [activeTool, setActiveTool] = useState("select");
   const [showPalette, setShowPalette] = useState(false);
   const [showShapePalette, setShowShapePalette] = useState(false);
-  const [showCollaborationModal, setShowCollaborationModal] = useState(false);
+  const [showUserCheck, setShowUserCheck] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string>('');
 
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [textAreas, setTextAreas] = useState<StickyNoteType[]>([]);
@@ -398,7 +344,7 @@ export default function Home() {
   const [comments, setComments] = useState<CommentType[]>([]);
 
   // Mock collaborators data
-  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [collaborators] = useState<Collaborator[]>([]);
   const owner = { id: "0", name: "You" };
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -542,14 +488,12 @@ export default function Home() {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUserEmail(user?.email || null);
-      setUserName(user?.user_metadata?.full_name || user?.email || 'User');
     };
 
     getUser();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUserEmail(session?.user?.email || null);
-      setUserName(session?.user?.user_metadata?.full_name || session?.user?.email || 'User');
     });
 
     return () => subscription.unsubscribe();
@@ -838,7 +782,6 @@ export default function Home() {
   };
 
   const handleInviteClick = () => {
-    setShowCollaborationModal(true);
     toast({
       title: "Invite Collaborators",
       description: "Share this board with your team members.",
@@ -856,6 +799,14 @@ export default function Home() {
     toast({
       title: "Presentation Mode",
       description: "Entering presentation mode. Press ESC to exit.",
+    });
+  };
+
+  const handleUserCheckClick = () => {
+    setShowUserCheck(true);
+    toast({
+      title: "User Check",
+      description: "Check if a user exists in the system.",
     });
   };
 
@@ -921,17 +872,8 @@ export default function Home() {
           </Button>
         </div>
         
-        <div className="flex items-center space-x-4">
-          {/* Collaborators Panel */}
-          <CollaboratorsPanel
-            collaborators={collaborators}
-            owner={owner}
-            userEmail={userEmail}
-            boardTitle={boardName}
-            boardId={boardId}
-          />
-          
-          <div className="flex items-center space-x-2">
+        <div className="bg-white rounded-lg shadow-lg p-4">
+          <div className="flex items-center justify-center space-x-2">
             <Button variant="outline" size="sm" onClick={handleSaveBoard}>
               Save Board
             </Button>
@@ -1162,14 +1104,10 @@ export default function Home() {
         </ZoomableGrid>
       </div>
 
-      {/* Collaboration Modal */}
-      <CollaborationModal
-        isOpen={showCollaborationModal}
-        onClose={() => setShowCollaborationModal(false)}
-        boardId={boardId}
-        boardName={boardName}
-        userEmail={userEmail || ''}
-        userName={userName}
+      {/* User Check Modal */}
+      <UserCheckModal 
+        isOpen={showUserCheck} 
+        onClose={() => setShowUserCheck(false)} 
       />
     </main>
   );
