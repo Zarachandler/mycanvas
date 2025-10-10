@@ -610,11 +610,7 @@ export default function Dashboard() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [boards, setBoards] = useState<BoardMetadata[]>([]);
   const [deleteConfirmTable, setDeleteConfirmTable] = useState<string | null>(null);
-  
-  // Edit state for board names
-  const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
-  const [editedBoardName, setEditedBoardName] = useState('');
-  
+
   // Filter and sort states
   const [filterBy, setFilterBy] = useState("all");
   const [ownedBy, setOwnedBy] = useState("anyone");
@@ -661,11 +657,14 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // Load user notifications using collaborationService
+  // Load user notifications using collaborationService - FIXED VERSION
   const loadUserNotifications = (email: string) => {
-    const userNotifications = collaborationService.getUserNotifications(email);
+    const userNotifications = collaborationService.getNotifications(email);
     setNotifications(userNotifications);
-    setUnreadCount(collaborationService.getUnreadCount(email));
+    
+    // Calculate unread count manually
+    const unreadCount = userNotifications.filter(notif => !notif.read).length;
+    setUnreadCount(unreadCount);
   };
 
   // Load collaboration invitations for user using collaborationService
@@ -674,9 +673,11 @@ export default function Dashboard() {
     setCollaborationInvitations(userInvitations);
   };
 
-  // Handle collaboration invitation response
+  // Handle collaboration invitation response - FIXED VERSION
   const handleCollaborationResponse = (invitationId: string, accept: boolean) => {
-    const success = collaborationService.updateInvitationStatus(invitationId, accept ? 'accepted' : 'declined');
+    const success = accept ? 
+      collaborationService.acceptCollaborationInvitation(invitationId) : 
+      collaborationService.declineCollaborationInvitation(invitationId);
     
     if (success) {
       if (accept) {
@@ -716,9 +717,14 @@ export default function Dashboard() {
     loadUserNotifications(userEmail);
   };
 
-  // Mark all notifications as read
+  // Mark all notifications as read - FIXED VERSION
   const markAllNotificationsAsRead = () => {
-    collaborationService.markAllNotificationsAsRead(userEmail);
+    // Mark each unread notification individually
+    notifications.forEach(notification => {
+      if (!notification.read) {
+        collaborationService.markNotificationAsRead(notification.id);
+      }
+    });
     loadUserNotifications(userEmail);
   };
 
@@ -919,43 +925,6 @@ export default function Dashboard() {
     }
   };
 
-  // Start editing board name
-  const startEditing = (board: BoardMetadata) => {
-    setEditingBoardId(board.id);
-    setEditedBoardName(board.name);
-  };
-
-  // Save edited board name
-  const saveEditedName = (boardId: string) => {
-    if (editedBoardName.trim() === '') {
-      // Don't save empty names
-      setEditingBoardId(null);
-      return;
-    }
-
-    const updatedBoards = boards.map(board => 
-      board.id === boardId 
-        ? { ...board, name: editedBoardName.trim() }
-        : board
-    );
-
-    setBoards(updatedBoards);
-    localStorage.setItem('recentBoards', JSON.stringify(updatedBoards));
-    
-    // Update recent board if it was edited
-    if (recentBoard && recentBoard.id === boardId) {
-      setRecentBoard({ ...recentBoard, name: editedBoardName.trim() });
-    }
-    
-    setEditingBoardId(null);
-  };
-
-  // Cancel editing
-  const cancelEditing = () => {
-    setEditingBoardId(null);
-    setEditedBoardName('');
-  };
-
   const getTimeAgo = (dateString: string): string => {
     const date = new Date(dateString);
     const now = new Date();
@@ -1010,7 +979,7 @@ export default function Dashboard() {
     }
   });
 
-  // Enhanced Notification Dropdown Component
+  // Enhanced Notification Dropdown Component - FIXED VERSION
   const NotificationDropdown = () => (
     <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-hidden">
       <div className="p-4 border-b border-gray-200 flex justify-between items-center">
@@ -1038,14 +1007,14 @@ export default function Dashboard() {
             {collaborationInvitations.map(invitation => (
               <div key={invitation.id} className="p-4 border-b border-gray-100 hover:bg-gray-50">
                 <div className="flex items-start space-x-3">
-                  <UserPlus className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />   
+                  <UserPlus className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900">
                       Collaboration Invitation
                     </p>
                     <p className="text-xs text-gray-600 mt-1">
   You&apos;ve been invited to collaborate on <strong>&quot;{invitation.boardName}&quot;</strong> by {invitation.fromUser}
-</p>
+                 </p>
                     <p className="text-xs text-gray-500 mt-1">
                       Expires: {new Date(invitation.expiresAt).toLocaleDateString()}
                     </p>
@@ -1610,8 +1579,11 @@ export default function Dashboard() {
                 </div>
               </div>
               
-              {/* Single Board Card */}
-              <Card className="cursor-pointer transition-all duration-300 hover:shadow-lg border-0 shadow-sm relative max-w-2xl">
+              {/* Single Board Card - REMOVED EDITING FUNCTIONALITY */}
+              <Card 
+                className="cursor-pointer transition-all duration-300 hover:shadow-lg border-0 shadow-sm relative max-w-2xl"
+                onClick={() => handleBoardClick()}
+              >
                 <CardContent className="p-0">
                   <div className="bg-gradient-to-br from-blue-100 to-indigo-200 h-48 rounded-t-lg flex items-center justify-center">
                     <div className="text-center">
@@ -1619,53 +1591,8 @@ export default function Dashboard() {
                         <FolderOpen className="w-8 h-8 text-blue-600" />
                       </div>
                       
-                      {/* Editable Board Name */}
-                      {editingBoardId === recentBoard.id ? (
-                        <div className="flex items-center justify-center space-x-2">
-                          <Input
-                            value={editedBoardName}
-                            onChange={(e) => setEditedBoardName(e.target.value)}
-                            className="text-2xl font-bold text-center bg-white/80 border-blue-300"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                saveEditedName(recentBoard.id);
-                              } else if (e.key === 'Escape') {
-                                cancelEditing();
-                              }
-                            }}
-                            autoFocus
-                          />
-                          <div className="flex space-x-1">
-                            <Button
-                              size="sm"
-                              className="h-8 w-8 p-0 bg-green-500 hover:bg-green-600"
-                              onClick={() => saveEditedName(recentBoard.id)}
-                            >
-                              <Check className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 w-8 p-0"
-                              onClick={cancelEditing}
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center space-x-2">
-                          <h3 className="text-2xl font-bold text-gray-800">{recentBoard.name}</h3>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => startEditing(recentBoard)}
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      )}
+                      {/* Board Name - No Editing */}
+                      <h3 className="text-2xl font-bold text-gray-800">{recentBoard.name}</h3>
                     </div>
                   </div>
                   <div className="p-6">
@@ -1689,13 +1616,19 @@ export default function Dashboard() {
                       </div>
                       <div className="flex items-center space-x-2">
                         <Button 
-                          onClick={() => handleBoardClick()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBoardClick();
+                          }}
                           className="bg-blue-600 hover:bg-blue-700 text-white"
                         >
                           Open Board
                         </Button>
                         {deleteConfirm ? (
-                          <div className="flex items-center space-x-2 bg-red-50 p-2 rounded-lg">
+                          <div 
+                            className="flex items-center space-x-2 bg-red-50 p-2 rounded-lg"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <span className="text-sm text-red-600 font-medium">Delete?</span>
                             <Button
                               variant="ghost"
@@ -1719,7 +1652,10 @@ export default function Dashboard() {
                             variant="ghost"
                             size="sm"
                             className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => setDeleteConfirm(true)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirm(true);
+                            }}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -1753,57 +1689,7 @@ export default function Dashboard() {
                             className="px-6 py-4 whitespace-nowrap cursor-pointer"
                             onClick={() => handleBoardClick(board.id)}
                           >
-                            <div className="flex items-center space-x-2">
-                              {editingBoardId === board.id ? (
-                                <div className="flex items-center space-x-2">
-                                  <Input
-                                    value={editedBoardName}
-                                    onChange={(e) => setEditedBoardName(e.target.value)}
-                                    className="h-8 text-sm"
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        saveEditedName(board.id);
-                                      } else if (e.key === 'Escape') {
-                                        cancelEditing();
-                                      }
-                                    }}
-                                    autoFocus
-                                  />
-                                  <div className="flex space-x-1">
-                                    <Button
-                                      size="sm"
-                                      className="h-8 w-8 p-0 bg-green-500 hover:bg-green-600"
-                                      onClick={() => saveEditedName(board.id)}
-                                    >
-                                      <Check className="w-3 h-3" />
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-8 w-8 p-0"
-                                      onClick={cancelEditing}
-                                    >
-                                      <X className="w-3 h-3" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-center space-x-2 group">
-                                  <div className="text-sm font-medium text-gray-900">{board.name}</div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      startEditing(board);
-                                    }}
-                                  >
-                                    <Edit3 className="w-3 h-3" />
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
+                            <div className="text-sm font-medium text-gray-900">{board.name}</div>
                           </td>
                           <td 
                             className="px-6 py-4 whitespace-nowrap cursor-pointer"
@@ -1826,7 +1712,6 @@ export default function Dashboard() {
                             <div className="text-sm text-gray-600">{board.owner}</div>
                           </td>
 
-                        
                           <td className="px-6 py-4 whitespace-nowrap">
                             {deleteConfirmTable === board.id ? (
                               <div className="flex items-center space-x-2">
@@ -1853,7 +1738,10 @@ export default function Dashboard() {
                                 variant="ghost"
                                 size="sm"
                                 className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                onClick={() => setDeleteConfirmTable(board.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteConfirmTable(board.id);
+                                }}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </Button>
